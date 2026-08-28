@@ -1,0 +1,13 @@
+{
+  "extends": "../../tooling/config/tsconfig.base.json",
+  "include": ["src", "../../tooling/config/global.d.ts"],
+  "exclude": [],
+  "compilerOptions": {
+    "paths": {
+      "@platejs/plite": ["../plite/src/index.ts"],
+      "@platejs/plite-history": ["../plite-history/src/index.ts"],
+      "@platejs/plite/internal": ["../plite/src/internal/index.ts"],
+      "@platejs/plite-outliner": ["../plite-outliner/src/index.ts"]
+    }
+  }
+}

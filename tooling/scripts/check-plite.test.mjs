@@ -100,6 +100,7 @@ test('a core source change invalidates every dependent Plite package', () => {
     '@platejs/plite',
     '@platejs/plite-dom',
     '@platejs/plite-history',
+    '@platejs/plite-outliner',
     '@platejs/plite-hyperscript',
     '@platejs/plite-react',
     '@platejs/plite-layout',

@@ -1,0 +1,35 @@
+{
+  "name": "local-tana",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite",
+    "lint": "plate-pkg p:lint",
+    "lint:fix": "plate-pkg p:lint:fix",
+    "tauri": "tauri",
+    "test": "bun test",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@platejs/plite": "workspace:^",
+    "@platejs/plite-dom": "workspace:^",
+    "@platejs/plite-history": "workspace:^",
+    "@platejs/plite-outliner": "workspace:^",
+    "@platejs/plite-react": "workspace:^",
+    "@platejs/tana": "workspace:*",
+    "@tauri-apps/api": "2.11.1",
+    "@tauri-apps/plugin-sql": "2.4.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@plate/scripts": "workspace:*",
+    "@tauri-apps/cli": "2.11.4",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "typescript": "7.0.2",
+    "vite": "7.3.5"
+  }
+}

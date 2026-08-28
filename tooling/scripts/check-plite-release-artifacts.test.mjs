@@ -91,6 +91,7 @@ test('owns focused packed proof for Plite package boundaries', () => {
     [
       '@platejs/plite',
       '@platejs/plite-dom',
+      '@platejs/plite-outliner',
       '@platejs/plite-react',
       '@platejs/plite-layout',
       '@platejs/core',

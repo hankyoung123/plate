@@ -64,6 +64,7 @@
         "../../packages/plite-dom/src/internal/index.ts"
       ],
       "@platejs/plite-history": ["../../packages/plite-history/src/index.ts"],
+      "@platejs/plite-outliner": ["../../packages/plite-outliner/src/index.ts"],
       "@platejs/plite-hyperscript": [
         "../../packages/plite-hyperscript/src/index.ts"
       ],

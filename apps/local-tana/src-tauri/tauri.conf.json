@@ -1,0 +1,26 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Local Tana",
+  "version": "0.1.0",
+  "identifier": "org.platejs.localtana",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Local Tana",
+        "width": 1440,
+        "height": 920,
+        "minWidth": 920,
+        "minHeight": 640,
+        "resizable": true
+      }
+    ],
+    "security": { "csp": null }
+  },
+  "bundle": { "active": true, "targets": "all" }
+}

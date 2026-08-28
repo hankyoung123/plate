@@ -124,6 +124,7 @@ storybook-static/
 
 # Local
 **/.tmp/
+apps/local-tana/src-tauri/target/
 packages/plate/docs/
 # Local Netlify folder
 .netlify

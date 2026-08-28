@@ -33,6 +33,10 @@ const plitePackageDefinitions = Object.freeze([
     root: 'packages/plite-history',
   }),
   Object.freeze({
+    name: '@platejs/plite-outliner',
+    root: 'packages/plite-outliner',
+  }),
+  Object.freeze({
     name: '@platejs/plite-hyperscript',
     root: 'packages/plite-hyperscript',
   }),

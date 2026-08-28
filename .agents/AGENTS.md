@@ -1,4 +1,8 @@
 - `.agents/AGENTS.md` and `.agents/rules/*.mdc` are source of truth. After editing them, run `pnpm install` to sync. Never edit `SKILL.md` directly.
+- AI Coding Contract rule 13: when a user explicitly requests product-first sequencing, complete the full planned product surface before adding feature tests; keep acceptance criteria durable in the active goal plan meanwhile.
+- AI Coding Contract rule 14: under that explicit product-first contract, do not write or run feature tests during implementation. Read-only source inspection and dependency installation are allowed; verification starts only after the planned implementation is complete.
+- AI Coding Contract rule 15: run one dedicated final verification phase that covers every named package, domain, app, persistence, interaction, accessibility, IME, history, and reload matrix, and record exact evidence in the goal plan.
+- AI Coding Contract rule 16: fix every final-verification failure at its authoritative runtime or package owner. Never satisfy the matrix with test-only branches, temporary patches, duplicated state, or a second mutation path.
 - Be concise in all interactions and commit messages. Never sacrifice precision or readability for brevity.
 - Answer in English by default. Switch languages only when the user explicitly asks for another language.
 - Prefer the best long-term durable architecture that materially fixes the owning problem over the nearest compatible or local patch. Before stability, break APIs and abstractions when that buys materially better lasting value; preserve only hard correctness, security, serialized-data, native-behavior, or runtime laws.

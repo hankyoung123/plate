@@ -1,0 +1,21 @@
+{
+  "extends": "../../tooling/config/tsconfig.base.json",
+  "include": ["src", "vite.config.ts", "../../tooling/config/global.d.ts"],
+  "compilerOptions": {
+    "lib": ["DOM", "DOM.Iterable", "ES2024"],
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "paths": {
+      "@platejs/plite": ["../../packages/plite/src/index.ts"],
+      "@platejs/plite/internal": ["../../packages/plite/src/internal/index.ts"],
+      "@platejs/plite-dom": ["../../packages/plite-dom/src/index.ts"],
+      "@platejs/plite-dom/internal": [
+        "../../packages/plite-dom/src/internal/index.ts"
+      ],
+      "@platejs/plite-history": ["../../packages/plite-history/src/index.ts"],
+      "@platejs/plite-outliner": ["../../packages/plite-outliner/src/index.ts"],
+      "@platejs/plite-react": ["../../packages/plite-react/src/index.ts"],
+      "@platejs/tana": ["../../packages/tana/src/index.ts"]
+    }
+  }
+}

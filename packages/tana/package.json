@@ -1,0 +1,34 @@
+{
+  "name": "@platejs/tana",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "brl": "echo 'No barrels to generate'",
+    "build": "tsdown --config tsdown.config.mts --log-level warn",
+    "clean": "rimraf dist lib",
+    "lint": "plate-pkg p:lint",
+    "lint:fix": "plate-pkg p:lint:fix",
+    "test": "bun test --preload ../../config/plite-source-test-setup.ts",
+    "typecheck": "plate-pkg p:typecheck"
+  },
+  "dependencies": {
+    "@platejs/plite": "workspace:^",
+    "@platejs/plite-outliner": "workspace:^"
+  },
+  "devDependencies": {
+    "@plate/scripts": "workspace:*",
+    "@platejs/plite-history": "workspace:^"
+  }
+}
