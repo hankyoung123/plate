@@ -13,6 +13,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@platejs/combobox": "workspace:^",
     "@platejs/plite": "workspace:^",
     "@platejs/plite-dom": "workspace:^",
     "@platejs/plite-history": "workspace:^",

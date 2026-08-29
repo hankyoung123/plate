@@ -1,11 +1,15 @@
 import {
+  ContentSlice,
   defineExtension,
   type Element,
   type EditorUpdateTransaction,
+  type NamedRootKey,
   type NodeSelection,
   NodeApi,
   type Path,
   PathApi,
+  type Point,
+  type Range,
   SelectionApi,
   type Value,
 } from '@platejs/plite';
@@ -25,12 +29,29 @@ export type OutlinerMoveInput = Readonly<{
   target: Path;
 }>;
 
+export type OutlinerSplitInput = OutlinerTarget &
+  Readonly<{
+    block: Element;
+    range: Range;
+    sourceRoot: NamedRootKey;
+    targetProperties?: Readonly<Record<string, unknown>>;
+    targetRoot: NamedRootKey;
+    type: string;
+  }>;
+
+export type OutlinerMergeInput = OutlinerTarget &
+  Readonly<{
+    childType?: string;
+    sourceRoot: NamedRootKey;
+    targetRoot: NamedRootKey;
+  }>;
+
 export type OutlinerTxApi = {
   insertSibling: (input: OutlinerInsertInput) => void;
-  mergeBackward: (input: OutlinerTarget) => void;
-  moveBlock: (input: OutlinerMoveInput) => void;
+  mergeBackward: (input: OutlinerMergeInput) => boolean;
+  move: (input: OutlinerMoveInput) => void;
   nest: (input: OutlinerTarget) => void;
-  splitAtSelection: (input: OutlinerInsertInput) => void;
+  splitAtSelection: (input: OutlinerSplitInput) => boolean;
   unnest: (input: OutlinerTarget) => void;
 };
 
@@ -53,8 +74,9 @@ const select = (tx: EditorUpdateTransaction, paths: readonly Path[]) => {
     return Boolean(entry && tx.nodes.isSelectable(entry[0]));
   });
   const first = selectable[0];
-  if (!first) return;
-  tx.selection.set(SelectionApi.nodes([first, ...selectable.slice(1)]));
+  const last = selectable.at(-1);
+  if (!first || !last) return;
+  tx.selection.setNodes(selectable, { anchor: first, focus: last });
 };
 
 const sameParent = (left: Path, right: Path) =>
@@ -91,67 +113,82 @@ const createOutlinerUpdate = (tx: EditorUpdateTransaction): OutlinerTxApi => ({
     tx.blocks.insertAfter(block, { at });
     select(tx, selection?.paths ?? [path]);
   },
-  mergeBackward({ at }) {
-    if (!PathApi.hasPrevious(at)) return;
-    tx.nodes.merge({ at });
+  mergeBackward({ at, childType, sourceRoot, targetRoot }) {
+    if (!PathApi.hasPrevious(at)) return false;
+    const source = tx.value().roots?.[sourceRoot]?.[0];
+    const target = tx.value().roots?.[targetRoot]?.[0];
+    if (!source || !target || !NodeApi.isElement(source)) return false;
+
+    const targetPoint = tx.points.end({ path: [0, 0, 0], offset: 0, root: targetRoot });
+    if (!targetPoint) return false;
+    const caret = tx.anchor(targetPoint, {
+      association: 'backward',
+      deletion: 'nearest',
+    });
+    const inserted = tx.slice.replace(ContentSlice.closed(source.children), {
+      at: targetPoint,
+    });
+    if (!inserted) return false;
+
+    if (childType) {
+      while (true) {
+        const index = tx.nodes
+          .children(at)
+          .findIndex((node) => NodeApi.isElement(node) && node.type === childType);
+        if (index < 0) break;
+        tx.nodes.move({
+          at: [...at, index],
+          to: [...PathApi.previous(at), tx.nodes.children(PathApi.previous(at)).length],
+        });
+      }
+    }
+    tx.nodes.remove({ at });
+    const resolved = caret.resolve();
+    if (resolved) tx.selection.set(resolved);
+    return true;
   },
-  moveBlock({ at, intent, target }) {
+  move({ at, intent, target }) {
     const paths = selectedPaths(at);
     assertMovable(paths, target);
-    const rawDestination = insertionPath(tx, intent, target);
-    if (paths.length === 1) {
-      select(tx, paths);
-      tx.nodes.move({
-        at: paths[0],
-        to: adjustDestinationAfterRemoval(rawDestination, paths),
-      });
-      return;
-    }
-
-    const nodes = paths
-      .map((path) => tx.nodes.get(path)?.[0])
-      .filter(Boolean) as Element[];
-    const destination = adjustDestinationAfterRemoval(rawDestination, paths);
-    for (const path of [...paths].sort((a, b) => PathApi.compare(b, a))) {
-      tx.nodes.remove({ at: path });
-    }
-    nodes.forEach((node, index) =>
-      tx.nodes.insert(node, {
-        at: [...destination.slice(0, -1), (destination.at(-1) ?? 0) + index],
-      })
+    const destination = adjustDestinationAfterRemoval(
+      insertionPath(tx, intent, target),
+      paths
     );
-    select(
-      tx,
-      nodes.map((_, index) => [
-        ...destination.slice(0, -1),
-        (destination.at(-1) ?? 0) + index,
-      ])
-    );
+    const selection = SelectionApi.isNode(at) ? at : SelectionApi.nodes([at]);
+    tx.nodes.move({ at: selection, to: destination });
   },
   nest({ at }) {
     if (!PathApi.hasPrevious(at)) return;
     const parent = PathApi.previous(at);
-    const destination = [...parent, tx.nodes.children(parent).length];
-    const node = tx.nodes.get(at)?.[0];
-    if (!node || !NodeApi.isElement(node)) return;
-    tx.nodes.remove({ at });
-    tx.nodes.insert(node, { at: destination });
-    select(tx, [destination]);
+    tx.nodes.move({ at, to: [...parent, tx.nodes.children(parent).length] });
   },
-  splitAtSelection({ at, block, selection }) {
-    const path = PathApi.next(at);
+  splitAtSelection({
+    at,
+    block,
+    range,
+    sourceRoot,
+    targetProperties,
+    targetRoot,
+    type,
+  }) {
+    tx.nodes.split({ at: range, always: true, type });
+    const roots = tx.value().roots?.[sourceRoot];
+    const leading = roots?.[0];
+    const trailing = roots?.[1];
+    if (!leading || !trailing || !NodeApi.isElement(trailing)) return false;
+
+    tx.roots.replace(sourceRoot, [leading]);
+    tx.roots.create(targetRoot, [
+      { ...trailing, ...targetProperties } as Element,
+    ]);
     tx.blocks.insertAfter(block, { at });
-    select(tx, selection?.paths ?? [path]);
+    const point = tx.points.start({ path: [0, 0, 0], offset: 0, root: targetRoot });
+    if (point) tx.selection.set(point);
+    return true;
   },
   unnest({ at }) {
     if (at.length < 2) return;
-    const parent = PathApi.parent(at);
-    const destination = PathApi.next(parent);
-    const node = tx.nodes.get(at)?.[0];
-    if (!node || !NodeApi.isElement(node)) return;
-    tx.nodes.remove({ at });
-    tx.nodes.insert(node, { at: destination });
-    select(tx, [destination]);
+    tx.nodes.move({ at, to: PathApi.next(PathApi.parent(at)) });
   },
 });
 
@@ -162,5 +199,4 @@ export const outliner = () =>
   });
 
 export type OutlinerExtension = ReturnType<typeof outliner>;
-
 export type OutlinerEditorValue = Value;

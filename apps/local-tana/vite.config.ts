@@ -9,6 +9,7 @@ export default defineConfig({
   envPrefix: ['VITE_', 'TAURI_'],
   resolve: {
     alias: {
+      '@platejs/combobox': source('../../packages/combobox/src/index.ts'),
       '@platejs/plite/internal': source(
         '../../packages/plite/src/internal/index.ts'
       ),

@@ -10,7 +10,6 @@ const plitePackageDirectories = {
   '@platejs/plite': 'plite',
   '@platejs/plite-dom': 'plite-dom',
   '@platejs/plite-history': 'plite-history',
-  '@platejs/plite-outliner': 'plite-outliner',
   '@platejs/plite-hyperscript': 'plite-hyperscript',
   '@platejs/plite-layout': 'plite-layout',
   '@platejs/plite-react': 'plite-react',

@@ -3,6 +3,7 @@ import {
   createStarterDocument,
   ensureNodeCatalog,
   nodeText,
+  type NodeId,
   type TanaDocument,
 } from '@platejs/tana';
 
@@ -15,22 +16,85 @@ export type VaultRecord = Readonly<{
 
 export interface PersistenceAdapter {
   readonly kind: 'browser' | 'sqlite';
+  flush(): Promise<void>;
   load(vaultId: string): Promise<VaultRecord | null>;
-  save(record: VaultRecord): Promise<void>;
+  saveDocument(document: TanaDocument): Promise<void>;
 }
 
 const STORAGE_PREFIX = 'local-tana:vault:';
 const CURRENT_SCHEMA_VERSION = 2;
 
-class BrowserPersistenceAdapter implements PersistenceAdapter {
+const nodeSnapshot = (document: TanaDocument) =>
+  new Map(
+    [...buildTanaIndex(document).nodes].map(([nodeId, node]) => [
+      nodeId,
+      JSON.stringify(node),
+    ])
+  );
+
+abstract class BasePersistenceAdapter implements PersistenceAdapter {
+  abstract readonly kind: PersistenceAdapter['kind'];
+  protected pendingWrite: Promise<void> = Promise.resolve();
+  protected previousDocument: TanaDocument | undefined;
+  protected vaultId = '';
+
+  abstract load(vaultId: string): Promise<VaultRecord | null>;
+  protected abstract write(
+    record: VaultRecord,
+    changed: ReadonlySet<NodeId>,
+    removed: ReadonlySet<NodeId>
+  ): Promise<void>;
+
+  async saveDocument(document: TanaDocument) {
+    const before = this.previousDocument
+      ? nodeSnapshot(this.previousDocument)
+      : new Map<NodeId, string>();
+    const after = nodeSnapshot(document);
+    const changed = new Set<NodeId>();
+    const removed = new Set<NodeId>();
+    for (const [nodeId, snapshot] of after) {
+      if (before.get(nodeId) !== snapshot) changed.add(nodeId);
+    }
+    for (const nodeId of before.keys()) {
+      if (!after.has(nodeId)) removed.add(nodeId);
+    }
+    const record: VaultRecord = {
+      document,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      updatedAt: new Date().toISOString(),
+      vaultId: this.vaultId,
+    };
+    const write = this.pendingWrite
+      .catch(() => undefined)
+      .then(() => this.write(record, changed, removed));
+    this.pendingWrite = write;
+    await write;
+    this.previousDocument = document;
+  }
+
+  async flush() {
+    await this.pendingWrite;
+  }
+
+  protected remember(vaultId: string, document: TanaDocument) {
+    this.vaultId = vaultId;
+    this.previousDocument = document;
+  }
+}
+
+class BrowserPersistenceAdapter extends BasePersistenceAdapter {
   readonly kind = 'browser' as const;
 
   async load(vaultId: string) {
+    this.vaultId = vaultId;
     const value = localStorage.getItem(`${STORAGE_PREFIX}${vaultId}`);
-    return value ? (JSON.parse(value) as VaultRecord) : null;
+    if (!value) return null;
+    const record = JSON.parse(value) as VaultRecord;
+    this.remember(vaultId, record.document);
+    return record;
   }
 
-  async save(record: VaultRecord) {
+  protected async write(record: VaultRecord) {
     localStorage.setItem(
       `${STORAGE_PREFIX}${record.vaultId}`,
       JSON.stringify(record)
@@ -38,7 +102,7 @@ class BrowserPersistenceAdapter implements PersistenceAdapter {
   }
 }
 
-class SQLitePersistenceAdapter implements PersistenceAdapter {
+class SQLitePersistenceAdapter extends BasePersistenceAdapter {
   readonly kind = 'sqlite' as const;
   private database?: Awaited<ReturnType<typeof this.connect>>;
 
@@ -53,6 +117,7 @@ class SQLitePersistenceAdapter implements PersistenceAdapter {
   }
 
   async load(vaultId: string): Promise<VaultRecord | null> {
+    this.vaultId = vaultId;
     const db = await this.db();
     const rows = await db.select<
       Array<{
@@ -66,17 +131,22 @@ class SQLitePersistenceAdapter implements PersistenceAdapter {
       [vaultId]
     );
     const row = rows[0];
-    return row
-      ? {
-          document: JSON.parse(row.document_json) as TanaDocument,
-          schemaVersion: row.schema_version,
-          updatedAt: row.updated_at,
-          vaultId: row.vault_id,
-        }
-      : null;
+    if (!row) return null;
+    const document = JSON.parse(row.document_json) as TanaDocument;
+    this.remember(vaultId, document);
+    return {
+      document,
+      schemaVersion: row.schema_version,
+      updatedAt: row.updated_at,
+      vaultId: row.vault_id,
+    };
   }
 
-  async save(record: VaultRecord) {
+  protected async write(
+    record: VaultRecord,
+    changed: ReadonlySet<NodeId>,
+    removed: ReadonlySet<NodeId>
+  ) {
     const db = await this.db();
     const index = buildTanaIndex(record.document);
     await db.execute('BEGIN IMMEDIATE');
@@ -95,13 +165,18 @@ class SQLitePersistenceAdapter implements PersistenceAdapter {
           record.updatedAt,
         ]
       );
-      await db.execute('DELETE FROM node_fts WHERE vault_id = $1', [
-        record.vaultId,
-      ]);
-      for (const node of index.nodes.values()) {
+      for (const nodeId of [...changed, ...removed]) {
+        await db.execute(
+          'DELETE FROM node_fts WHERE vault_id = $1 AND node_id = $2',
+          [record.vaultId, nodeId]
+        );
+      }
+      for (const nodeId of changed) {
+        const node = index.nodes.get(nodeId);
+        if (!node) continue;
         await db.execute(
           'INSERT INTO node_fts (vault_id, node_id, body) VALUES ($1, $2, $3)',
-          [record.vaultId, node.nodeId, nodeText(node)]
+          [record.vaultId, nodeId, nodeText(node)]
         );
       }
       await db.execute('COMMIT');
@@ -123,18 +198,21 @@ export const loadVault = async (
 ): Promise<VaultRecord> => {
   const record = await adapter.load(vaultId);
   if (record) {
-    const migrated = {
-      ...record,
-      document: ensureNodeCatalog(record.document),
-      schemaVersion: CURRENT_SCHEMA_VERSION,
-    };
+    const document = ensureNodeCatalog(record.document);
     if (
-      migrated.document !== record.document ||
+      document !== record.document ||
       record.schemaVersion !== CURRENT_SCHEMA_VERSION
     ) {
-      await adapter.save(migrated);
+      await adapter.saveDocument(document);
+      await adapter.flush();
+      return {
+        document,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
+        updatedAt: new Date().toISOString(),
+        vaultId,
+      };
     }
-    return migrated;
+    return record;
   }
 
   return {

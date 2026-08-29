@@ -8,7 +8,6 @@ type PublicPackageModules = [
   typeof import('@platejs/plite-dom'),
   typeof import('@platejs/plite-dom/internal'),
   typeof import('@platejs/plite-history'),
-  typeof import('@platejs/plite-outliner'),
   typeof import('@platejs/plite-hyperscript'),
   typeof import('@platejs/plite-layout'),
   typeof import('@platejs/plite-layout/react'),
@@ -66,7 +65,6 @@ type PublicPackageNamedExports = [
   typeof import('@platejs/plite-dom/internal').DOMEditor,
   typeof import('@platejs/plite-history').History,
   typeof import('@platejs/plite-history').history,
-  typeof import('@platejs/plite-outliner').outliner,
   typeof import('@platejs/plite-hyperscript').createHyperscript,
   typeof import('@platejs/plite-hyperscript').jsx,
   typeof import('@platejs/plite-layout').createPliteLayout,
@@ -79,12 +77,6 @@ type PublicPackageNamedExports = [
 ];
 
 type PublicPackageNamedTypeExports = [
-  import('@platejs/plite-outliner').OutlinerDropIntent,
-  import('@platejs/plite-outliner').OutlinerExtension,
-  import('@platejs/plite-outliner').OutlinerInsertInput,
-  import('@platejs/plite-outliner').OutlinerMoveInput,
-  import('@platejs/plite-outliner').OutlinerTarget,
-  import('@platejs/plite-outliner').OutlinerTxApi,
   import('@platejs/plite').Anchor<import('@platejs/plite').Range>,
   import('@platejs/plite').ContentSlice,
   import('@platejs/plite').Descendant,

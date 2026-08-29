@@ -275,6 +275,9 @@ importers:
 
   apps/local-tana:
     dependencies:
+      '@platejs/combobox':
+        specifier: workspace:^
+        version: link:../../packages/combobox
       '@platejs/plite':
         specifier: workspace:^
         version: link:../../packages/plite
@@ -1188,6 +1191,12 @@ importers:
       '@platejs/plite':
         specifier: workspace:^
         version: link:../plite
+      '@platejs/plite-react':
+        specifier: workspace:^
+        version: link:../plite-react
+      react:
+        specifier: 19.2.8
+        version: 19.2.8
     devDependencies:
       '@plate/scripts':
         specifier: workspace:*
@@ -2108,6 +2117,12 @@ importers:
       '@platejs/plite':
         specifier: workspace:^
         version: link:../plite
+      '@types/react':
+        specifier: 19.2.7
+        version: 19.2.7
+      react:
+        specifier: 19.2.8
+        version: 19.2.8
 
   packages/plite-react:
     dependencies:

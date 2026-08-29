@@ -45,7 +45,9 @@
   },
   "dependencies": {
     "@platejs/core": "workspace:^",
-    "@platejs/plite": "workspace:^"
+    "@platejs/plite": "workspace:^",
+    "@platejs/plite-react": "workspace:^",
+    "react": "19.2.8"
   },
   "devDependencies": {
     "@plate/scripts": "workspace:*",

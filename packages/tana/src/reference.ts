@@ -1,6 +1,4 @@
-import { createEditorView, type Editor, type Path } from '@platejs/plite';
-
-import { type NodeId, nodeRoot, type ReferenceElement } from './model';
+import { type NodeId, type ReferenceElement } from './model';
 
 export const createReference = (
   targetNodeId: NodeId,
@@ -11,13 +9,3 @@ export const createReference = (
   targetNodeId,
   children: [{ text: '' }],
 });
-
-export const insertReference = (
-  editor: Editor,
-  sourceNodeId: NodeId,
-  reference: ReferenceElement,
-  at?: Path
-) => {
-  const view = createEditorView(editor, { root: nodeRoot(sourceNodeId) });
-  view.update((tx) => tx.nodes.insert(reference, at ? { at } : undefined));
-};

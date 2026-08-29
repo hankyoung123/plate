@@ -7,7 +7,6 @@ const publicPackageNames = [
   '@platejs/browser',
   '@platejs/plite-dom',
   '@platejs/plite-history',
-  '@platejs/plite-outliner',
   '@platejs/plite-hyperscript',
   '@platejs/plite-layout',
   '@platejs/plite-react',
@@ -18,7 +17,6 @@ const publicPackageDirectories: Record<string, string> = {
   '@platejs/plite': 'plite',
   '@platejs/plite-dom': 'plite-dom',
   '@platejs/plite-history': 'plite-history',
-  '@platejs/plite-outliner': 'plite-outliner',
   '@platejs/plite-hyperscript': 'plite-hyperscript',
   '@platejs/plite-layout': 'plite-layout',
   '@platejs/plite-react': 'plite-react',
@@ -257,7 +255,6 @@ const exactPublicPackageRuntimeExportExpectations = {
     'writeHostFragmentData',
   ],
   '@platejs/plite-history': ['History', 'history'],
-  '@platejs/plite-outliner': ['outliner'],
   '@platejs/plite-hyperscript': [
     'createEditor',
     'createEditorFixture',

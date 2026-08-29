@@ -1,24 +1,8 @@
-import { createEditorView, type Editor } from '@platejs/plite';
-
 import {
   type NodeElement,
   type NodeId,
-  nodeRoot,
   type SupertagDefinition,
 } from './model';
-
-const updateNode = (
-  editor: Editor,
-  nodeId: NodeId,
-  update: (node: NodeElement) => Partial<NodeElement>
-) => {
-  const view = createEditorView(editor, { root: nodeRoot(nodeId) });
-  view.update((tx) => {
-    const entry = tx.nodes.get([0], { type: 'node' });
-    if (!entry) return;
-    tx.nodes.set(update(entry[0] as NodeElement), { at: [0] });
-  });
-};
 
 export const withSupertag = (
   node: NodeElement,
@@ -64,32 +48,6 @@ export const withFieldValue = (
     fields: { ...node.metadata.fields, [fieldId]: value },
   },
 });
-
-export const applySupertag = (
-  editor: Editor,
-  nodeId: NodeId,
-  tagId: NodeId,
-  definition?: SupertagDefinition
-) => {
-  updateNode(editor, nodeId, (node) => ({
-    metadata: withSupertag(node, tagId, definition).metadata,
-  }));
-};
-
-export const removeSupertag = (editor: Editor, nodeId: NodeId, tagId: NodeId) =>
-  updateNode(editor, nodeId, (node) => ({
-    metadata: withoutSupertag(node, tagId).metadata,
-  }));
-
-export const setFieldValue = (
-  editor: Editor,
-  nodeId: NodeId,
-  fieldId: string,
-  value: import('./field').FieldValue
-) =>
-  updateNode(editor, nodeId, (node) => ({
-    metadata: withFieldValue(node, fieldId, value).metadata,
-  }));
 
 /** Resolve inherited supertag fields with child definitions winning by id. */
 export const resolveSupertagDefinition = (

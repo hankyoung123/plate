@@ -62,11 +62,6 @@ export const PLITE_RELEASE_PACKAGES = [
   },
   {
     allowedPlateRuntime: ['@platejs/plite'],
-    directory: 'packages/plite-outliner',
-    name: '@platejs/plite-outliner',
-  },
-  {
-    allowedPlateRuntime: ['@platejs/plite'],
     directory: 'packages/plite-hyperscript',
     name: '@platejs/plite-hyperscript',
   },
@@ -121,7 +116,6 @@ export const PLITE_RELEASE_PACKAGES = [
 const PLITE_PACKAGE_BOUNDARY_NAMES = new Set([
   '@platejs/plite',
   '@platejs/plite-dom',
-  '@platejs/plite-outliner',
   '@platejs/plite-react',
   '@platejs/plite-layout',
   '@platejs/core',

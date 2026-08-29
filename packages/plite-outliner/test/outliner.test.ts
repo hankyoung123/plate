@@ -74,7 +74,7 @@ describe('Plite outliner transactions', () => {
     });
     const selection = SelectionApi.nodes([[0], [1]]);
 
-    editor.update.outliner.moveBlock({
+    editor.update.outliner.move({
       at: selection,
       intent: 'after',
       target: [2],
@@ -87,7 +87,7 @@ describe('Plite outliner transactions', () => {
     });
     assert.throws(
       () =>
-        nested.update.outliner.moveBlock({
+        nested.update.outliner.move({
           at: [0],
           intent: 'child',
           target: [0, 0],
@@ -102,7 +102,7 @@ describe('Plite outliner transactions', () => {
       initialValue: [block('a'), block('b'), block('parent')],
     });
 
-    editor.update.outliner.moveBlock({
+    editor.update.outliner.move({
       at: [0],
       intent: 'after',
       target: [1],
@@ -112,7 +112,7 @@ describe('Plite outliner transactions', () => {
       ['b', 'a', 'parent']
     );
 
-    editor.update.outliner.moveBlock({
+    editor.update.outliner.move({
       at: [1],
       intent: 'child',
       target: [2],
@@ -122,7 +122,7 @@ describe('Plite outliner transactions', () => {
       ['b', 'parenta']
     );
 
-    editor.update.outliner.moveBlock({
+    editor.update.outliner.move({
       at: [1, 1],
       intent: 'before',
       target: [0],

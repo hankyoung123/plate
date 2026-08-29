@@ -54,7 +54,6 @@ export type NodeRecordElement = {
 export type PlacementElement = {
   type: 'placement';
   childRoots: { body: string };
-  collapsed?: boolean;
   nodeId: NodeId;
   placementId: PlacementId;
   children: Array<PlacementAnchorElement | PlacementElement>;
@@ -144,7 +143,6 @@ export const TanaSchema = defineEditorSchema('tana-schema', {
         },
       },
       properties: {
-        collapsed: property.boolean({ default: false, omitDefault: true }),
         nodeId: property.string({ required: true }),
         placementId: property.string({ required: true }),
       },

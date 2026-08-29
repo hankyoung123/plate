@@ -9,5 +9,6 @@ Remove the React combobox-input controller, `cursorState`, and `useHTMLInputCurs
 - Handle trigger-combobox insertion through the typed `insertText` command
 - Keep transient collaboration metadata on inserted combobox inputs
 - Rename `TriggerComboboxPluginOptions` to `TriggerComboboxPluginState`
+- Export `PliteCombobox` and `usePliteCombobox` for caret-local Plite editors.
 
 **Migration:** Replace `withTriggerCombobox` with `BaseTriggerComboboxPlugin`, which declares the command behavior directly.

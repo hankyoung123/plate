@@ -3,4 +3,5 @@
  */
 
 export * from './filterWords';
+export * from './plite-combobox';
 export * from './triggerCombobox';

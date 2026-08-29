@@ -684,6 +684,8 @@ export type EditableProps<
    */
   decorateRuntimeScope?: PliteProjectionRuntimeScope;
   disableDefaultStyles?: boolean;
+  /** Filter primary-root top-level nodes for a canonical structural view. */
+  filterTopLevelNodeKey?: (nodeKey: NodeKey) => boolean;
   id?: string;
   ignoreBlankEditableRootClicks?: boolean;
   /**
@@ -1086,6 +1088,7 @@ const EditableInner = <T, TElement extends PliteElementNode>({
   decorateDirtiness,
   decorateRuntimeScope,
   disableDefaultStyles = false,
+  filterTopLevelNodeKey = () => true,
   enableVirtualizedRendering = false,
   id,
   ignoreBlankEditableRootClicks = false,
@@ -2052,7 +2055,7 @@ const EditableInner = <T, TElement extends PliteElementNode>({
               )
             )
           ) : (
-            topLevelNodeKeys.map((nodeKey) => (
+            topLevelNodeKeys.filter(filterTopLevelNodeKey).map((nodeKey) => (
               <EditableDescendantNode
                 key={nodeKey}
                 placeholder={placeholderValue}
