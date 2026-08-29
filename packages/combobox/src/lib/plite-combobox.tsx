@@ -1,5 +1,9 @@
 import { RangeApi, type Point, type Range } from '@platejs/plite';
-import { useEditor, useEditorSelection } from '@platejs/plite-react';
+import {
+  useEditor,
+  useEditorComposing,
+  useEditorSelection,
+} from '@platejs/plite-react';
 import React, { type ReactNode, useCallback, useMemo, useState } from 'react';
 
 export type PliteComboboxItem = Readonly<{
@@ -26,16 +30,17 @@ const readTriggerAtCaret = (
   selection: Range | null
 ): PliteComboboxState | null => {
   if (!selection || !RangeApi.isCollapsed(selection)) return null;
-  const focus = selection.focus;
-  const before = editor.read((state) =>
-    state.points.before(focus, { unit: 'character' })
-  );
-  const prefix = before
-    ? editor.read((state) => state.text.string({ anchor: before, focus }))
-    : '';
+  const { focus } = selection;
+  const prefix = editor.read((state) => {
+    const block = state.nodes.block({ at: focus });
+    const start = block && state.points.start(block[1]);
+    return start ? state.text.string({ anchor: start, focus }) : '';
+  });
   const match = prefix.match(/(?:^|\s)([@#/:])([^\s@#/:]*)$/u);
   if (!match) return null;
-  const triggerLength = (match[2]?.length ?? 0) + 1;
+  const [, trigger, query = ''] = match;
+  if (!trigger) return null;
+  const triggerLength = query.length + 1;
   const start = editor.read((state) =>
     state.points.before(focus, {
       distance: triggerLength,
@@ -45,9 +50,9 @@ const readTriggerAtCaret = (
   if (!start) return null;
   return {
     point: focus,
-    query: match[2] ?? '',
+    query,
     range: { anchor: start, focus },
-    trigger: match[1]!,
+    trigger,
     triggerLength,
   };
 };
@@ -61,16 +66,24 @@ export const usePliteCombobox = ({
   onCommit: PliteComboboxCommit;
 }) => {
   const editor = useEditor();
+  const composing = useEditorComposing();
   const selection = useEditorSelection();
-  const state = useMemo(
+  const detected = useMemo(
     () => readTriggerAtCaret(editor, selection),
     [editor, selection]
   );
+  const [dismissed, setDismissed] = useState<PliteComboboxState | null>(null);
+  const state = detected && detected !== dismissed ? detected : null;
   const items = useMemo(
     () => (state ? getItems(state.trigger, state.query) : []),
     [getItems, state]
   );
-  const [activeIndex, setActiveIndex] = useState(0);
+  const stateKey = state ? `${state.trigger}:${state.query}` : '';
+  const [navigation, setNavigation] = useState({ index: 0, stateKey: '' });
+  const activeIndex =
+    navigation.stateKey === stateKey
+      ? Math.min(navigation.index, Math.max(items.length - 1, 0))
+      : 0;
   const choose = useCallback(
     (item: PliteComboboxItem | undefined) => {
       if (item && state) onCommit(item, state);
@@ -79,24 +92,35 @@ export const usePliteCombobox = ({
   );
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
-      if (!state || !items.length) return;
+      if (composing || event.nativeEvent.isComposing || !state) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setDismissed(state);
+        return;
+      }
+      if (!items.length) return;
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault();
         const delta = event.key === 'ArrowDown' ? 1 : -1;
-        setActiveIndex(
-          (current) => (current + delta + items.length) % items.length
-        );
+        setNavigation({
+          index: (activeIndex + delta + items.length) % items.length,
+          stateKey,
+        });
       } else if (event.key === 'Enter') {
         event.preventDefault();
         choose(items[activeIndex]);
-      } else if (event.key === 'Escape') {
-        event.preventDefault();
-        setActiveIndex(0);
       }
     },
-    [activeIndex, choose, items, state]
+    [activeIndex, choose, composing, items, state, stateKey]
   );
-  return { activeIndex, choose, items, onKeyDown, state };
+  return {
+    activeIndex,
+    choose,
+    isOpen: Boolean(state),
+    items,
+    onKeyDown,
+    state,
+  };
 };
 
 /** Default popup surface; providers own item meaning and commit behavior. */
@@ -123,7 +147,8 @@ export const PliteCombobox = ({
         role="option"
         aria-selected={index === activeIndex}
       >
-        <span>{item.label}</span><small>{item.description}</small>
+        <span>{item.label}</span>
+        <small>{item.description}</small>
       </button>
     ))}
   </div>

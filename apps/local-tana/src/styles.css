@@ -363,6 +363,9 @@ kbd {
   padding-left: 8px;
   border-left: 1px solid #d6d0c3;
 }
+.projection-ancestor {
+  display: contents;
+}
 .placement-children.collapsed {
   display: none;
 }

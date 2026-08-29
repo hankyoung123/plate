@@ -1,8 +1,4 @@
-import {
-  type NodeElement,
-  type NodeId,
-  type SupertagDefinition,
-} from './model';
+import type { NodeElement, NodeId, SupertagDefinition } from './model';
 
 export const withSupertag = (
   node: NodeElement,

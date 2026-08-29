@@ -59,8 +59,9 @@ export const buildTanaIndex = (
 ): TanaIndex => {
   const nodes = new Map<NodeId, NodeElement>();
   for (const root of Object.values(document.roots ?? {})) {
-    for (const item of root)
-      {if (isNodeElement(item)) nodes.set(item.nodeId, item);}
+    for (const item of root) {
+      if (isNodeElement(item)) nodes.set(item.nodeId, item);
+    }
   }
 
   const placements = new Map<PlacementId, PlacementRecord>();
@@ -86,8 +87,9 @@ export const buildTanaIndex = (
     ancestors.set(placement.placementId, lineage);
     add(placementsByNode, placement.nodeId, placement.placementId);
     add(children, parentId ?? 'root', placement.placementId);
-    for (const ancestor of lineage)
-      {add(descendants, ancestor, placement.placementId);}
+    for (const ancestor of lineage) {
+      add(descendants, ancestor, placement.placementId);
+    }
     placement.children.forEach((child, index) => {
       if (isPlacement(child)) {
         visit(
@@ -107,10 +109,12 @@ export const buildTanaIndex = (
   const nodesBySupertag = new Map<NodeId, NodeId[]>();
   const fieldValues = new Map<NodeId, NodeElement['metadata']['fields']>();
   for (const node of nodes.values()) {
-    for (const target of referencesIn(node))
-      {add(backlinks, target, node.nodeId);}
-    for (const tag of node.metadata.supertags ?? [])
-      {add(nodesBySupertag, tag, node.nodeId);}
+    for (const target of referencesIn(node)) {
+      add(backlinks, target, node.nodeId);
+    }
+    for (const tag of node.metadata.supertags ?? []) {
+      add(nodesBySupertag, tag, node.nodeId);
+    }
     fieldValues.set(node.nodeId, node.metadata.fields);
   }
 
@@ -127,14 +131,27 @@ export const buildTanaIndex = (
   };
 };
 
-export const nodeText = (node: NodeElement): string => {
+export const nodeText = (
+  node: NodeElement,
+  nodes?: ReadonlyMap<NodeId, NodeElement>
+): string => {
+  const visited = new Set<NodeId>([node.nodeId]);
+  const title = (targetNodeId: NodeId): string => {
+    const target = nodes?.get(targetNodeId);
+    if (!target || visited.has(targetNodeId)) return '';
+    visited.add(targetNodeId);
+    const value = target.children.map(collect).join('\n');
+    visited.delete(targetNodeId);
+    return value;
+  };
   const collect = (value: unknown): string => {
     if (typeof value !== 'object' || value === null) return '';
     if ('text' in value && typeof value.text === 'string') return value.text;
     if ((value as { type?: string }).type === 'reference') {
-      return (value as ReferenceElement).label;
+      const reference = value as ReferenceElement;
+      return reference.alias ?? title(reference.targetNodeId);
     }
-    const {children} = (value as { children?: unknown });
+    const { children } = value as { children?: unknown };
     return Array.isArray(children) ? children.map(collect).join('') : '';
   };
   return node.children.map(collect).join('\n');

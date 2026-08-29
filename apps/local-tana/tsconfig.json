@@ -7,6 +7,7 @@
     "noEmit": true,
     "paths": {
       "@platejs/combobox": ["../../packages/combobox/src/index.ts"],
+      "@platejs/dnd": ["../../packages/dnd/src/index.ts"],
       "@platejs/plite": ["../../packages/plite/src/index.ts"],
       "@platejs/plite/internal": ["../../packages/plite/src/internal/index.ts"],
       "@platejs/plite-dom": ["../../packages/plite-dom/src/index.ts"],
@@ -16,6 +17,9 @@
       "@platejs/plite-history": ["../../packages/plite-history/src/index.ts"],
       "@platejs/plite-outliner": ["../../packages/plite-outliner/src/index.ts"],
       "@platejs/plite-react": ["../../packages/plite-react/src/index.ts"],
+      "@platejs/plite-react/internal": [
+        "../../packages/plite-react/src/internal/index.ts"
+      ],
       "@platejs/tana": ["../../packages/tana/src/index.ts"]
     }
   }

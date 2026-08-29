@@ -1,11 +1,11 @@
-import { type NodeId, type ReferenceElement } from './model';
+import type { NodeId, ReferenceElement } from './model';
 
 export const createReference = (
   targetNodeId: NodeId,
-  label: string
+  alias?: string
 ): ReferenceElement => ({
-  type: 'reference',
-  label,
-  targetNodeId,
+  ...(alias ? { alias } : {}),
   children: [{ text: '' }],
+  targetNodeId,
+  type: 'reference',
 });

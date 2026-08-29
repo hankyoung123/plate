@@ -1,7 +1,6 @@
 import {
   buildTanaIndex,
   createStarterDocument,
-  ensureNodeCatalog,
   nodeText,
   type NodeId,
   type TanaDocument,
@@ -32,7 +31,33 @@ const nodeSnapshot = (document: TanaDocument) =>
     ])
   );
 
-abstract class BasePersistenceAdapter implements PersistenceAdapter {
+const includeDerivedBacklinks = (
+  beforeDocument: TanaDocument | undefined,
+  afterDocument: TanaDocument,
+  changed: Set<NodeId>,
+  removed: ReadonlySet<NodeId>
+) => {
+  const before = beforeDocument ? buildTanaIndex(beforeDocument) : undefined;
+  const after = buildTanaIndex(afterDocument);
+  const pending = [...changed, ...removed];
+  const visited = new Set(pending);
+  while (pending.length > 0) {
+    const target = pending.shift();
+    if (!target) continue;
+    const sources = new Set([
+      ...(before?.backlinks.get(target) ?? []),
+      ...(after.backlinks.get(target) ?? []),
+    ]);
+    for (const source of sources) {
+      if (after.nodes.has(source)) changed.add(source);
+      if (visited.has(source)) continue;
+      visited.add(source);
+      pending.push(source);
+    }
+  }
+};
+
+export abstract class BasePersistenceAdapter implements PersistenceAdapter {
   abstract readonly kind: PersistenceAdapter['kind'];
   protected pendingWrite: Promise<void> = Promise.resolve();
   protected previousDocument: TanaDocument | undefined;
@@ -46,18 +71,6 @@ abstract class BasePersistenceAdapter implements PersistenceAdapter {
   ): Promise<void>;
 
   async saveDocument(document: TanaDocument) {
-    const before = this.previousDocument
-      ? nodeSnapshot(this.previousDocument)
-      : new Map<NodeId, string>();
-    const after = nodeSnapshot(document);
-    const changed = new Set<NodeId>();
-    const removed = new Set<NodeId>();
-    for (const [nodeId, snapshot] of after) {
-      if (before.get(nodeId) !== snapshot) changed.add(nodeId);
-    }
-    for (const nodeId of before.keys()) {
-      if (!after.has(nodeId)) removed.add(nodeId);
-    }
     const record: VaultRecord = {
       document,
       schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -66,10 +79,30 @@ abstract class BasePersistenceAdapter implements PersistenceAdapter {
     };
     const write = this.pendingWrite
       .catch(() => undefined)
-      .then(() => this.write(record, changed, removed));
+      .then(async () => {
+        const before = this.previousDocument
+          ? nodeSnapshot(this.previousDocument)
+          : new Map<NodeId, string>();
+        const after = nodeSnapshot(document);
+        const changed = new Set<NodeId>();
+        const removed = new Set<NodeId>();
+        for (const [nodeId, snapshot] of after) {
+          if (before.get(nodeId) !== snapshot) changed.add(nodeId);
+        }
+        for (const nodeId of before.keys()) {
+          if (!after.has(nodeId)) removed.add(nodeId);
+        }
+        includeDerivedBacklinks(
+          this.previousDocument,
+          document,
+          changed,
+          removed
+        );
+        await this.write(record, changed, removed);
+        this.previousDocument = document;
+      });
     this.pendingWrite = write;
     await write;
-    this.previousDocument = document;
   }
 
   async flush() {
@@ -82,7 +115,7 @@ abstract class BasePersistenceAdapter implements PersistenceAdapter {
   }
 }
 
-class BrowserPersistenceAdapter extends BasePersistenceAdapter {
+export class BrowserPersistenceAdapter extends BasePersistenceAdapter {
   readonly kind = 'browser' as const;
 
   async load(vaultId: string) {
@@ -176,7 +209,7 @@ class SQLitePersistenceAdapter extends BasePersistenceAdapter {
         if (!node) continue;
         await db.execute(
           'INSERT INTO node_fts (vault_id, node_id, body) VALUES ($1, $2, $3)',
-          [record.vaultId, nodeId, nodeText(node)]
+          [record.vaultId, nodeId, nodeText(node, index.nodes)]
         );
       }
       await db.execute('COMMIT');
@@ -198,19 +231,10 @@ export const loadVault = async (
 ): Promise<VaultRecord> => {
   const record = await adapter.load(vaultId);
   if (record) {
-    const document = ensureNodeCatalog(record.document);
-    if (
-      document !== record.document ||
-      record.schemaVersion !== CURRENT_SCHEMA_VERSION
-    ) {
-      await adapter.saveDocument(document);
-      await adapter.flush();
-      return {
-        document,
-        schemaVersion: CURRENT_SCHEMA_VERSION,
-        updatedAt: new Date().toISOString(),
-        vaultId,
-      };
+    if (record.schemaVersion !== CURRENT_SCHEMA_VERSION) {
+      throw new Error(
+        `Unsupported vault schema ${record.schemaVersion}; expected ${CURRENT_SCHEMA_VERSION}.`
+      );
     }
     return record;
   }

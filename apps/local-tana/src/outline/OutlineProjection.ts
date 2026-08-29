@@ -9,76 +9,90 @@ import {
 import type { WorkspaceState } from '../workspace/WorkspaceState';
 
 export type OutlineProjection = Readonly<{
+  ancestorPlacementIds: ReadonlySet<PlacementId>;
+  isAncestor: (placementId: PlacementId) => boolean;
   isVisible: (placementId: PlacementId) => boolean;
-  topLevelPaths: readonly Path[];
-  visiblePlacementIds: ReadonlySet<PlacementId>;
+  rootPaths: readonly Path[];
+  visiblePathsInOutlineOrder: readonly Path[];
+  visiblePlacementIds: readonly PlacementId[];
 }>;
-
-const descendantsOf = (
-  index: TanaIndex,
-  placementId: PlacementId
-): readonly PlacementId[] => index.descendants.get(placementId) ?? [];
 
 const matchesQuery = (
   index: TanaIndex,
   placementId: PlacementId,
   query: string
 ) => {
-  if (!query.trim()) return true;
   const record = index.placements.get(placementId);
   const node = record && index.nodes.get(record.nodeId);
   return Boolean(
     node &&
-    nodeText(node).toLocaleLowerCase().includes(query.toLocaleLowerCase())
+    nodeText(node, index.nodes)
+      .toLocaleLowerCase()
+      .includes(query.toLocaleLowerCase())
   );
 };
 
-/** Project canonical Placements into the only outline view that may mount. */
+/** Derive the sole visible outline order from canonical topology and view state. */
 export const createOutlineProjection = (
   index: TanaIndex,
   workspace: WorkspaceState,
   query = ''
 ): OutlineProjection => {
-  const root = index.children.get('root') ?? [];
-  const visible = new Set<PlacementId>(index.placements.keys());
-  const zoomed = workspace.zoomedPlacementId;
+  const normalizedQuery = query.trim();
+  const zoom = workspace.zoomedPlacementId
+    ? index.placements.get(workspace.zoomedPlacementId)
+    : undefined;
+  const viewRoots = zoom
+    ? [zoom.placementId]
+    : (index.children.get('root') ?? []);
+  const included = new Set<PlacementId>();
 
-  if (zoomed) {
-    visible.clear();
-    const target = index.placements.get(zoomed);
-    if (target) {
-      target.ancestors.forEach((id) => visible.add(id));
-      visible.add(zoomed);
-      descendantsOf(index, zoomed).forEach((id) => visible.add(id));
+  if (normalizedQuery) {
+    for (const [placementId, record] of index.placements) {
+      if (!matchesQuery(index, placementId, normalizedQuery)) continue;
+      included.add(placementId);
+      record.ancestors.forEach((ancestor) => included.add(ancestor));
     }
   }
 
-  for (const collapsed of workspace.collapsedPlacementIds) {
-    for (const descendant of descendantsOf(index, collapsed)) {
-      visible.delete(descendant);
+  const visiblePlacementIds: PlacementId[] = [];
+  const visiblePathsInOutlineOrder: Path[] = [];
+  const collapsed = new Set(workspace.collapsedPlacementIds);
+  const visit = (placementId: PlacementId) => {
+    const record = index.placements.get(placementId);
+    if (!record) return;
+    const visible = !normalizedQuery || included.has(placementId);
+    if (visible) {
+      visiblePlacementIds.push(placementId);
+      visiblePathsInOutlineOrder.push(record.path);
     }
-  }
+    if (collapsed.has(placementId)) return;
+    for (const child of index.children.get(placementId) ?? []) visit(child);
+  };
+  viewRoots.forEach(visit);
 
-  if (query.trim()) {
-    const matches = new Set<PlacementId>();
-    for (const [placementId] of index.placements) {
-      if (!matchesQuery(index, placementId, query)) continue;
-      matches.add(placementId);
-      const record = index.placements.get(placementId);
-      record?.ancestors.forEach((ancestor) => matches.add(ancestor));
-    }
-    for (const id of [...visible]) if (!matches.has(id)) visible.delete(id);
+  const visibleSet = new Set(visiblePlacementIds);
+  const ancestorPlacementIds = new Set<PlacementId>(zoom?.ancestors);
+  const rootIndexes = new Set<number>();
+  for (const path of visiblePathsInOutlineOrder) {
+    const rootIndex = path[0];
+    if (rootIndex !== undefined) rootIndexes.add(rootIndex);
   }
-
-  const topLevelPaths = root
-    .filter((placementId) => visible.has(placementId))
-    .map((placementId) => index.placements.get(placementId)?.path)
-    .filter((path): path is Path => Boolean(path));
+  if (zoom) {
+    const rootIndex = zoom.path[0];
+    if (rootIndex !== undefined) rootIndexes.add(rootIndex);
+  }
+  const rootPaths = [...rootIndexes]
+    .toSorted((left, right) => left - right)
+    .map((rootIndex) => [rootIndex] as Path);
 
   return {
-    isVisible: (placementId) => visible.has(placementId),
-    topLevelPaths,
-    visiblePlacementIds: visible,
+    ancestorPlacementIds,
+    isAncestor: (placementId) => ancestorPlacementIds.has(placementId),
+    isVisible: (placementId) => visibleSet.has(placementId),
+    rootPaths,
+    visiblePathsInOutlineOrder,
+    visiblePlacementIds,
   };
 };
 

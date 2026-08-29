@@ -1,5 +1,6 @@
 import {
   defineExtension,
+  type EditorExtension,
   type EditorUpdateTransaction,
   type NodeSelection,
   type Path,
@@ -8,10 +9,12 @@ import {
   type Range,
   SelectionApi,
 } from '@platejs/plite';
-import {
-  type OutlinerDropIntent,
-  type OutlinerTxApi,
+import type {
+  OutlinerDropIntent,
+  OutlinerExtension,
+  OutlinerTxApi,
 } from '@platejs/plite-outliner';
+import type { EditorExtensionDependencyReferenceFor } from '@platejs/plite/internal';
 
 import type { FieldValue } from './field';
 import {
@@ -25,7 +28,9 @@ import {
   type PlacementId,
   type SupertagDefinition,
   TANA_NODE_CATALOG_ROOT,
+  TanaSchema,
   type TanaDocument,
+  type TanaValue,
 } from './model';
 import { buildTanaIndex } from './query';
 import { createReference } from './reference';
@@ -63,8 +68,8 @@ export type TanaMergeBackwardInput = Readonly<{
 }>;
 
 export type TanaInsertReferenceInput = Readonly<{
-  at?: Point;
-  label: string;
+  alias?: string;
+  at: Point;
   sourceNodeId: NodeId;
   targetNodeId: NodeId;
 }>;
@@ -75,39 +80,49 @@ export type TanaRemoveReferenceInput = Readonly<{
 }>;
 
 export type TanaTxApi = Readonly<{
-  applySupertag: (input: Readonly<{
-    definition?: SupertagDefinition;
-    nodeId: NodeId;
-    tagId: NodeId;
-  }>) => void;
+  applySupertag: (
+    input: Readonly<{
+      definition?: SupertagDefinition;
+      nodeId: NodeId;
+      tagId: NodeId;
+    }>
+  ) => void;
   createNode: (input?: TanaCreateNodeInput) => NodeId;
   createPlacement: (input: TanaCreatePlacementInput) => PlacementId;
   deleteNode: (input: TanaDeleteNodeInput) => void;
   deletePlacement: (input: TanaDeletePlacementInput) => void;
-  indentPlacement: (input: Readonly<{ at: Path }>) => void;
+  indentPlacement: (input: Readonly<{ at: Path | NodeSelection }>) => void;
   insertReference: (input: TanaInsertReferenceInput) => void;
   mergeBackward: (input: TanaMergeBackwardInput) => boolean;
   removeReference: (input: TanaRemoveReferenceInput) => void;
   removeSupertag: (input: Readonly<{ nodeId: NodeId; tagId: NodeId }>) => void;
-  outdentPlacement: (input: Readonly<{ at: Path }>) => void;
-  setField: (input: Readonly<{
-    fieldId: string;
-    nodeId: NodeId;
-    value: FieldValue;
-  }>) => void;
+  outdentPlacement: (input: Readonly<{ at: Path | NodeSelection }>) => void;
+  setField: (
+    input: Readonly<{
+      fieldId: string;
+      nodeId: NodeId;
+      value: FieldValue;
+    }>
+  ) => void;
   splitNode: (input: TanaSplitNodeInput) => NodeId | null;
-  movePlacement: (input: Readonly<{
-    at: Path | NodeSelection;
-    intent: OutlinerDropIntent;
-    target: Path;
-  }>) => void;
+  movePlacement: (
+    input: Readonly<{
+      at: Path | NodeSelection;
+      intent: OutlinerDropIntent;
+      target: Path;
+    }>
+  ) => void;
 }>;
 
-const documentOf = (tx: EditorUpdateTransaction): TanaDocument =>
-  tx.value() as TanaDocument;
+type TanaTransaction = EditorUpdateTransaction<
+  TanaValue,
+  readonly [OutlinerExtension, typeof TanaSchema]
+>;
+
+const documentOf = (tx: TanaTransaction): TanaDocument => tx.value();
 
 const nodeAtRoot = (
-  tx: EditorUpdateTransaction,
+  tx: TanaTransaction,
   nodeId: NodeId
 ): NodeElement | undefined => {
   const node = documentOf(tx).roots?.[nodeRoot(nodeId)]?.[0];
@@ -115,7 +130,7 @@ const nodeAtRoot = (
 };
 
 const appendRecord = (
-  tx: EditorUpdateTransaction,
+  tx: TanaTransaction,
   record: ReturnType<typeof createNodeWithPlacement>['record']
 ) => {
   const catalog = tx.value().roots?.[TANA_NODE_CATALOG_ROOT] ?? [];
@@ -123,7 +138,7 @@ const appendRecord = (
 };
 
 const updateNodeMetadata = (
-  tx: EditorUpdateTransaction,
+  tx: TanaTransaction,
   nodeId: NodeId,
   update: (node: NodeElement) => NodeElement['metadata']
 ) => {
@@ -142,11 +157,13 @@ const relationError = (nodeId: NodeId, relation: string) =>
   new Error(`Cannot delete Node "${nodeId}": ${relation} still exists.`);
 
 const createTanaUpdate = (
-  tx: EditorUpdateTransaction & Readonly<{ outliner: OutlinerTxApi }>
+  tx: TanaTransaction & Readonly<{ outliner: OutlinerTxApi }>
 ): TanaTxApi => ({
   applySupertag({ definition, nodeId, tagId }) {
-    updateNodeMetadata(tx, nodeId, (node) =>
-      withSupertag(node, tagId, definition).metadata
+    updateNodeMetadata(
+      tx,
+      nodeId,
+      (node) => withSupertag(node, tagId, definition).metadata
     );
   },
   createNode({ at, metadata = {}, parent, text = '' } = {}) {
@@ -155,7 +172,11 @@ const createTanaUpdate = (
     tx.roots.create(created.root, [node]);
     appendRecord(tx, created.record);
     tx.nodes.insert(created.placement, {
-      at: at ?? (parent ? [...parent, tx.nodes.children(parent).length] : [tx.children().length]),
+      at:
+        at ??
+        (parent
+          ? [...parent, tx.nodes.children(parent).length]
+          : [tx.children().length]),
     });
     return created.nodeId;
   },
@@ -169,7 +190,9 @@ const createTanaUpdate = (
   },
   deleteNode({ nodeId }) {
     const index = buildTanaIndex(documentOf(tx));
-    if (!index.nodes.has(nodeId)) throw new Error(`Unknown Tana Node "${nodeId}".`);
+    if (!index.nodes.has(nodeId)) {
+      throw new Error(`Unknown Tana Node "${nodeId}".`);
+    }
     if ((index.placementsByNode.get(nodeId) ?? []).length > 0) {
       throw relationError(nodeId, 'a Placement');
     }
@@ -178,7 +201,12 @@ const createTanaUpdate = (
     }
     for (const node of index.nodes.values()) {
       const values = Object.values(node.metadata.fields ?? {});
-      if (values.some((value) => value === nodeId || (Array.isArray(value) && value.includes(nodeId)))) {
+      if (
+        values.some(
+          (value) =>
+            value === nodeId || (Array.isArray(value) && value.includes(nodeId))
+        )
+      ) {
         throw relationError(nodeId, 'a field reference');
       }
       if ((node.metadata.supertags ?? []).includes(nodeId)) {
@@ -200,10 +228,13 @@ const createTanaUpdate = (
   indentPlacement({ at }) {
     tx.outliner.nest({ at });
   },
-  insertReference({ at, label, sourceNodeId, targetNodeId }) {
-    const reference = createReference(targetNodeId, label);
+  insertReference({ alias, at, sourceNodeId, targetNodeId }) {
+    if (!nodeAtRoot(tx, sourceNodeId) || !nodeAtRoot(tx, targetNodeId)) {
+      throw new Error('Reference source and target Nodes must exist.');
+    }
+    const reference = createReference(targetNodeId, alias);
     tx.nodes.insert(reference, {
-      at: at ?? ({ offset: 0, path: [0, 0, 0], root: nodeRoot(sourceNodeId) } as Point),
+      at,
     });
   },
   mergeBackward({ at, nodeId }) {
@@ -216,29 +247,32 @@ const createTanaUpdate = (
       sourceRoot: nodeRoot(nodeId),
       targetRoot: nodeRoot(previous.nodeId),
     });
-    if (merged) {
-      const catalog = (tx.value().roots?.[TANA_NODE_CATALOG_ROOT] ?? []).filter(
-        (record) => !('nodeId' in record) || record.nodeId !== nodeId
-      );
-      tx.roots.replace(TANA_NODE_CATALOG_ROOT, catalog);
-      tx.roots.delete(nodeRoot(nodeId));
-    }
     return merged;
   },
   movePlacement({ at, intent, target }) {
     tx.outliner.move({ at, intent, target });
   },
   removeReference({ at, sourceNodeId }) {
-    tx.nodes.remove({ at: SelectionApi.nodes([at], { root: nodeRoot(sourceNodeId) }) });
+    tx.nodes.remove({
+      at: SelectionApi.nodes([at], { root: nodeRoot(sourceNodeId) }),
+    });
   },
   removeSupertag({ nodeId, tagId }) {
-    updateNodeMetadata(tx, nodeId, (node) => withoutSupertag(node, tagId).metadata);
+    updateNodeMetadata(
+      tx,
+      nodeId,
+      (node) => withoutSupertag(node, tagId).metadata
+    );
   },
   outdentPlacement({ at }) {
     tx.outliner.unnest({ at });
   },
   setField({ fieldId, nodeId, value }) {
-    updateNodeMetadata(tx, nodeId, (node) => withFieldValue(node, fieldId, value).metadata);
+    updateNodeMetadata(
+      tx,
+      nodeId,
+      (node) => withFieldValue(node, fieldId, value).metadata
+    );
   },
   splitNode({ at, nodeId, range }) {
     const current = nodeAtRoot(tx, nodeId);
@@ -262,13 +296,20 @@ const createTanaUpdate = (
   },
 });
 
-/** Install Tana domain transactions and their generic Outliner dependency. */
-export const tana = () =>
-  defineExtension('tana', {
-    update: ({ tx }) =>
-      createTanaUpdate(
-        tx as EditorUpdateTransaction & Readonly<{ outliner: OutlinerTxApi }>
-      ),
-  });
+export type TanaExtension = EditorExtension<{
+  dependencies: readonly [
+    EditorExtensionDependencyReferenceFor<OutlinerExtension>,
+    EditorExtensionDependencyReferenceFor<typeof TanaSchema>,
+  ];
+  name: 'tana';
+  update: TanaTxApi;
+}>;
 
-export type TanaExtension = ReturnType<typeof tana>;
+/** Install Tana domain transactions and their generic Outliner dependency. */
+export function tana(outlinerExtension: OutlinerExtension): TanaExtension;
+export function tana(outlinerExtension: OutlinerExtension): TanaExtension {
+  return defineExtension('tana', {
+    dependencies: [outlinerExtension, TanaSchema],
+    update: ({ tx }) => createTanaUpdate(tx),
+  });
+}

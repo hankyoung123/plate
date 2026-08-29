@@ -46,21 +46,27 @@ export const WorkspaceShell = ({
   adapter: PersistenceAdapter;
   context: WorkspaceContextValue;
   onCommit: () => void;
-}) => (
-  <WorkspaceContext.Provider value={context}>
-    <div className="app-shell">
-      <TopBar adapter={adapter} />
-      <Sidebar />
-      <main className="workspace-canvas">
-        <Breadcrumbs />
-        <TabStrip />
-        <OutlineSurface onCommit={onCommit} />
-      </main>
-      <Inspector />
-      <CommandPalette />
-    </div>
-  </WorkspaceContext.Provider>
-);
+}) => {
+  const scrollContainerRef = useRef<HTMLElement>(null);
+  return (
+    <WorkspaceContext.Provider value={context}>
+      <div className="app-shell">
+        <TopBar adapter={adapter} />
+        <Sidebar />
+        <main className="workspace-canvas" ref={scrollContainerRef}>
+          <Breadcrumbs />
+          <TabStrip />
+          <OutlineSurface
+            onCommit={onCommit}
+            scrollContainerRef={scrollContainerRef}
+          />
+        </main>
+        <Inspector />
+        <CommandPalette />
+      </div>
+    </WorkspaceContext.Provider>
+  );
+};
 
 const TopBar = ({ adapter }: { adapter: PersistenceAdapter }) => {
   const { editor, setWorkspace, workspace } = useWorkspace();
@@ -92,7 +98,7 @@ const TopBar = ({ adapter }: { adapter: PersistenceAdapter }) => {
           type="button"
           className="history-button"
           aria-label="Undo"
-          onClick={() => editor.update((tx) => (tx as any).history.undo())}
+          onClick={() => editor.update((tx) => tx.history.undo())}
         >
           ↶
         </button>
@@ -100,7 +106,7 @@ const TopBar = ({ adapter }: { adapter: PersistenceAdapter }) => {
           type="button"
           className="history-button"
           aria-label="Redo"
-          onClick={() => editor.update((tx) => (tx as any).history.redo())}
+          onClick={() => editor.update((tx) => tx.history.redo())}
         >
           ↷
         </button>
@@ -152,7 +158,7 @@ const Sidebar = () => {
           className="nav-item"
           onClick={() => {
             const node = [...index.nodes.values()].find(
-              (item) => nodeText(item) === 'Today'
+              (item) => nodeText(item, index.nodes) === 'Today'
             );
             if (node) openNode(node.nodeId);
           }}
@@ -186,7 +192,7 @@ const Sidebar = () => {
               onClick={() => openNode(node.nodeId)}
             >
               <span className="tiny-bullet" />
-              {nodeText(node) || 'Untitled'}
+              {nodeText(node, index.nodes) || 'Untitled'}
             </button>
           ) : null;
         })}
@@ -226,7 +232,7 @@ const Breadcrumbs = () => {
             {' '}
             /{' '}
             <button type="button" onClick={() => openNode(node.nodeId)}>
-              {nodeText(node) || 'Untitled'}
+              {nodeText(node, index.nodes) || 'Untitled'}
             </button>
           </span>
         ) : null;
@@ -248,7 +254,9 @@ const TabStrip = () => {
             key={nodeId}
           >
             <button type="button" onClick={() => openNode(nodeId)}>
-              {node ? nodeText(node) || 'Untitled' : 'Missing node'}
+              {node
+                ? nodeText(node, index.nodes) || 'Untitled'
+                : 'Missing node'}
             </button>
             <button
               type="button"
@@ -303,7 +311,7 @@ const CommandPalette = () => {
       (node) =>
         (!referencesOnly ||
           (index.backlinks.get(node.nodeId)?.length ?? 0) > 0) &&
-        nodeText(node)
+        nodeText(node, index.nodes)
           .toLocaleLowerCase()
           .includes(workspace.search.toLocaleLowerCase())
     )
@@ -339,7 +347,7 @@ const CommandPalette = () => {
             }}
           >
             <span className="result-bullet" />
-            <span>{nodeText(node) || 'Untitled'}</span>
+            <span>{nodeText(node, index.nodes) || 'Untitled'}</span>
           </button>
         ))}
       </div>

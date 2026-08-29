@@ -56,7 +56,7 @@ export const Inspector = () => {
       </div>
       {node ? (
         <>
-          <h2>{nodeText(node) || 'Untitled'}</h2>
+          <h2>{nodeText(node, index.nodes) || 'Untitled'}</h2>
           <div className="id-label">{node.nodeId}</div>
           <section>
             <h3 className="section-label">SUPERTAGS</h3>
@@ -68,7 +68,7 @@ export const Inspector = () => {
                   key={tag}
                   onClick={() =>
                     editor.update((tx) =>
-                      (tx as any).tana.removeSupertag({
+                      tx.tana.removeSupertag({
                         nodeId: node.nodeId,
                         tagId: tag,
                       })
@@ -93,7 +93,7 @@ export const Inspector = () => {
                 value={node.metadata.fields?.[definition.id] ?? null}
                 onChange={(value) =>
                   editor.update((tx) =>
-                    (tx as any).tana.setField({
+                    tx.tana.setField({
                       fieldId: definition.id,
                       nodeId: node.nodeId,
                       value,
@@ -114,7 +114,7 @@ export const Inspector = () => {
                   key={id}
                   onClick={() => openNode(id)}
                 >
-                  {nodeText(backlink)}
+                  {nodeText(backlink, index.nodes)}
                 </button>
               ) : null;
             })}
@@ -188,7 +188,7 @@ const FieldEditor = ({
           <option value="">-</option>
           {[...index.nodes.values()].map((node) => (
             <option key={node.nodeId} value={node.nodeId}>
-              {nodeText(node) || 'Untitled'}
+              {nodeText(node, index.nodes) || 'Untitled'}
             </option>
           ))}
         </select>

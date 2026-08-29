@@ -71,6 +71,7 @@
       "@platejs/plite-layout/react": [
         "../../packages/plite-layout/src/react.tsx"
       ],
+      "@platejs/plite-outliner": ["../../packages/plite-outliner/src/index.ts"],
       "@platejs/plite-react": ["../../packages/plite-react/src/index.ts"],
       "@platejs/plite-react/internal": [
         "../../packages/plite-react/src/internal/index.ts"

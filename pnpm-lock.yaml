@@ -86,9 +86,6 @@ importers:
       '@platejs/plite-layout':
         specifier: workspace:^
         version: link:packages/plite-layout
-      '@platejs/plite-outliner':
-        specifier: workspace:^
-        version: link:packages/plite-outliner
       '@platejs/plite-react':
         specifier: workspace:^
         version: link:packages/plite-react
@@ -2110,6 +2107,10 @@ importers:
         version: 19.2.8(react@19.2.8)
 
   packages/plite-outliner:
+    dependencies:
+      '@platejs/dnd':
+        specifier: workspace:^
+        version: link:../dnd
     devDependencies:
       '@plate/scripts':
         specifier: workspace:*

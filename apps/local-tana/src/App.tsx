@@ -29,15 +29,15 @@ const VAULT_ID = 'default';
 export const App = () => {
   const adapter = useMemo(() => createPersistenceAdapter(), []);
   const [record, setRecord] = useState<VaultRecord | null>(null);
-  const [error, setError] = useState<string>();
+  const [fatalError, setFatalError] = useState<string>();
   useEffect(() => {
     loadVault(adapter, VAULT_ID)
       .then(setRecord)
       .catch((error: unknown) => {
-        setError(error instanceof Error ? error.message : String(error));
+        setFatalError(error instanceof Error ? error.message : String(error));
       });
   }, [adapter]);
-  if (error) return <FatalError message={error} />;
+  if (fatalError) return <FatalError message={fatalError} />;
   if (!record) return <LoadingVault kind={adapter.kind} />;
   return <Vault adapter={adapter} initial={record} />;
 };
@@ -81,10 +81,13 @@ const Vault = ({
   const [saveState, setSaveState] = useState<'saved' | 'saving'>('saved');
   const timer = useRef<number | undefined>(undefined);
   const pending = useRef<TanaDocument | undefined>(undefined);
+  const saveRevision = useRef(0);
   const persist = useCallback(
     (document: TanaDocument) => {
       window.clearTimeout(timer.current);
       pending.current = document;
+      saveRevision.current += 1;
+      const revision = saveRevision.current;
       setSaveState('saving');
       timer.current = window.setTimeout(() => {
         const next = pending.current;
@@ -92,11 +95,13 @@ const Vault = ({
         pending.current = undefined;
         adapter
           .saveDocument(next)
-          .then(() => setSaveState('saved'))
+          .then(() => {
+            if (saveRevision.current === revision) setSaveState('saved');
+          })
           .catch(() => setSaveState('saving'));
       }, 180);
     },
-    [adapter, pending, timer]
+    [adapter]
   );
   const flush = useCallback(async () => {
     window.clearTimeout(timer.current);
@@ -104,7 +109,7 @@ const Vault = ({
     pending.current = undefined;
     if (next) await adapter.saveDocument(next);
     await adapter.flush();
-  }, [adapter, pending, timer]);
+  }, [adapter]);
   useEffect(() => {
     let dispose: (() => void) | undefined;
     if ('__TAURI_INTERNALS__' in window) {
@@ -132,7 +137,7 @@ const Vault = ({
     };
   }, [flush]);
   const onCommit = useCallback(() => {
-    const document = editor.read.value() as TanaDocument;
+    const document = editor.read.value();
     setIndex(indexStore.update(document));
     persist(document);
   }, [editor, indexStore, persist]);
@@ -165,7 +170,7 @@ const Vault = ({
   );
   const context: WorkspaceContextValue = useMemo(
     () => ({
-      editor: editor as unknown as WorkspaceContextValue['editor'],
+      editor,
       index,
       inspect,
       openNode,

@@ -10,6 +10,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@platejs/combobox': source('../../packages/combobox/src/index.ts'),
+      '@platejs/dnd': source('../../packages/dnd/src/index.ts'),
       '@platejs/plite/internal': source(
         '../../packages/plite/src/internal/index.ts'
       ),
@@ -23,6 +24,9 @@ export default defineConfig({
       ),
       '@platejs/plite-outliner': source(
         '../../packages/plite-outliner/src/index.ts'
+      ),
+      '@platejs/plite-react/internal': source(
+        '../../packages/plite-react/src/internal/index.ts'
       ),
       '@platejs/plite-react': source('../../packages/plite-react/src/index.ts'),
       '@platejs/tana': source('../../packages/tana/src/index.ts'),

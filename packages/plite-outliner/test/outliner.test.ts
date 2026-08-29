@@ -9,7 +9,13 @@ import {
   SelectionApi,
 } from '@platejs/plite';
 
-import { outliner } from '../src';
+import {
+  moveOutlineSelection,
+  outliner,
+  resolveOutlinerInteraction,
+  selectOutlineRange,
+  toggleOutlineSelection,
+} from '../src';
 
 const anchor = (text: string) => ({ type: 'anchor', children: [{ text }] });
 const block = (text: string, children: unknown[] = [anchor(text)]) => ({
@@ -79,7 +85,10 @@ describe('Plite outliner transactions', () => {
       intent: 'after',
       target: [2],
     });
-    assert.equal(editor.read.children().length, 3);
+    assert.deepEqual(
+      editor.read.children().map((node) => NodeApi.string(node)),
+      ['c', 'a', 'b']
+    );
 
     const nested = createEditor({
       extensions: [outliner(), OutlinerSchema],
@@ -130,6 +139,110 @@ describe('Plite outliner transactions', () => {
     assert.deepEqual(
       editor.read.children().map((node) => NodeApi.string(node)),
       ['a', 'b', 'parent']
+    );
+  });
+
+  it('preserves exact nested paths in projected Shift and toggle selection', () => {
+    const visible = [[0], [0, 1], [0, 2], [1]] as const;
+    const anchorSelection = SelectionApi.nodes([[0, 1]]);
+    const range = selectOutlineRange(visible, anchorSelection, [1]);
+    assert.deepEqual(range?.paths, [[0, 1], [0, 2], [1]]);
+
+    const toggled = toggleOutlineSelection(visible, range, [0]);
+    assert.deepEqual(toggled?.paths, [[0], [0, 1], [0, 2], [1]]);
+    const moved = moveOutlineSelection(visible, toggled!, -1);
+    assert.deepEqual(moved.paths, [[0, 2]]);
+  });
+
+  it('nests and unnests a multi-selection as one structural target', () => {
+    const editor = createEditor({
+      extensions: [outliner(), OutlinerSchema],
+      initialValue: [block('a'), block('b'), block('c'), block('d')],
+    });
+    editor.update.outliner.nest({
+      at: SelectionApi.nodes([[1], [2]]),
+    });
+    assert.deepEqual(
+      editor.read.children().map((node) => NodeApi.string(node)),
+      ['abc', 'd']
+    );
+    editor.update.outliner.unnest({
+      at: SelectionApi.nodes([
+        [0, 1],
+        [0, 2],
+      ]),
+    });
+    assert.deepEqual(
+      editor.read.children().map((node) => NodeApi.string(node)),
+      ['a', 'b', 'c', 'd']
+    );
+  });
+
+  it('resolves the single interaction priority without offset heuristics', () => {
+    const state = {
+      comboboxOpen: false,
+      composing: false,
+      defaultPrevented: false,
+      empty: false,
+      key: 'Enter',
+      nodeCollapsed: false,
+      selectionAtRootStart: false,
+      selectionCollapsed: true,
+      shift: false,
+    } as const;
+    assert.equal(resolveOutlinerInteraction(state), 'split');
+    assert.equal(
+      resolveOutlinerInteraction({ ...state, defaultPrevented: true }),
+      'pass'
+    );
+    assert.equal(
+      resolveOutlinerInteraction({ ...state, nodeCollapsed: true }),
+      'expand'
+    );
+    assert.equal(
+      resolveOutlinerInteraction({ ...state, comboboxOpen: true }),
+      'pass'
+    );
+    assert.equal(
+      resolveOutlinerInteraction({ ...state, composing: true }),
+      'pass'
+    );
+    assert.equal(
+      resolveOutlinerInteraction({
+        ...state,
+        key: 'Backspace',
+        selectionAtRootStart: true,
+      }),
+      'merge-backward'
+    );
+    assert.equal(
+      resolveOutlinerInteraction({
+        ...state,
+        key: 'Backspace',
+        selectionCollapsed: false,
+      }),
+      'pass'
+    );
+    assert.equal(
+      resolveOutlinerInteraction({
+        ...state,
+        key: 'Backspace',
+        selectionAtRootStart: false,
+      }),
+      'pass'
+    );
+    assert.equal(
+      resolveOutlinerInteraction({
+        ...state,
+        empty: true,
+        key: 'Backspace',
+      }),
+      'delete-placement'
+    );
+    assert.equal(resolveOutlinerInteraction({ ...state, key: 'Tab' }), 'nest');
+    assert.equal(
+      resolveOutlinerInteraction({ ...state, key: 'Tab', shift: true }),
+      'unnest'
     );
   });
 });

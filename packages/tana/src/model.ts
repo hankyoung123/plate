@@ -3,6 +3,7 @@ import {
   type EditorDocumentValue,
   property,
   schema,
+  type SchemaValue,
   type Text,
 } from '@platejs/plite';
 
@@ -19,9 +20,9 @@ export type PlacementAnchorElement = {
 };
 
 export type ReferenceElement = {
+  alias?: string;
   children: TanaText[];
   type: 'reference';
-  label: string;
   targetNodeId: NodeId;
 };
 
@@ -66,8 +67,6 @@ export type TanaElement =
   | PlacementAnchorElement
   | PlacementElement
   | ReferenceElement;
-export type TanaValue = TanaElement[];
-export type TanaDocument = EditorDocumentValue<TanaValue>;
 
 export type SupertagDefinition = Readonly<{
   extends?: readonly NodeId[];
@@ -149,7 +148,7 @@ export const TanaSchema = defineEditorSchema('tana-schema', {
     },
     reference: {
       properties: {
-        label: property.string({ required: true }),
+        alias: property.string(),
         targetNodeId: property.string({ required: true }),
       },
       void: 'markable-inline',
@@ -161,6 +160,9 @@ export const TanaSchema = defineEditorSchema('tana-schema', {
   },
   unknown: 'reject',
 });
+
+export type TanaValue = SchemaValue<typeof TanaSchema>;
+export type TanaDocument = EditorDocumentValue<TanaValue>;
 
 export const createNodeElement = (
   nodeId: NodeId,
@@ -280,32 +282,6 @@ export const createStarterDocument = (): TanaDocument => {
       [fields.root]: [fields.node],
       [today.root]: [today.node],
       [projectTag.root]: [projectTag.node],
-    },
-  };
-};
-
-export const ensureNodeCatalog = (document: TanaDocument): TanaDocument => {
-  const roots = document.roots ?? {};
-  const existing = (roots[TANA_NODE_CATALOG_ROOT] ?? []).filter(
-    (value): value is NodeRecordElement =>
-      typeof value === 'object' &&
-      value !== null &&
-      (value as { type?: unknown }).type === 'node-record'
-  );
-  const recorded = new Set(existing.map((record) => record.nodeId));
-  const missing = Object.values(roots)
-    .flatMap((value) => value)
-    .filter(isNodeElement)
-    .filter((node) => !recorded.has(node.nodeId))
-    .map((node) => createNodeRecord(node.nodeId));
-
-  if (roots[TANA_NODE_CATALOG_ROOT] && missing.length === 0) return document;
-
-  return {
-    ...document,
-    roots: {
-      ...roots,
-      [TANA_NODE_CATALOG_ROOT]: [...existing, ...missing],
     },
   };
 };

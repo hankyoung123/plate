@@ -17,11 +17,14 @@ import {
 export type OutlinerDropIntent = 'after' | 'before' | 'child';
 
 export type OutlinerTarget = Readonly<{
-  at: Path;
-  selection?: NodeSelection;
+  at: Path | NodeSelection;
 }>;
 
-export type OutlinerInsertInput = OutlinerTarget & Readonly<{ block: Element }>;
+export type OutlinerInsertInput = Readonly<{
+  at: Path;
+  block: Element;
+  selection?: NodeSelection;
+}>;
 
 export type OutlinerMoveInput = Readonly<{
   at: Path | NodeSelection;
@@ -29,22 +32,22 @@ export type OutlinerMoveInput = Readonly<{
   target: Path;
 }>;
 
-export type OutlinerSplitInput = OutlinerTarget &
-  Readonly<{
-    block: Element;
-    range: Range;
-    sourceRoot: NamedRootKey;
-    targetProperties?: Readonly<Record<string, unknown>>;
-    targetRoot: NamedRootKey;
-    type: string;
-  }>;
+export type OutlinerSplitInput = Readonly<{
+  at: Path;
+  block: Element;
+  range: Range;
+  sourceRoot: NamedRootKey;
+  targetProperties?: Readonly<Record<string, unknown>>;
+  targetRoot: NamedRootKey;
+  type: string;
+}>;
 
-export type OutlinerMergeInput = OutlinerTarget &
-  Readonly<{
-    childType?: string;
-    sourceRoot: NamedRootKey;
-    targetRoot: NamedRootKey;
-  }>;
+export type OutlinerMergeInput = Readonly<{
+  at: Path;
+  childType?: string;
+  sourceRoot: NamedRootKey;
+  targetRoot: NamedRootKey;
+}>;
 
 export type OutlinerTxApi = {
   insertSibling: (input: OutlinerInsertInput) => void;
@@ -56,7 +59,23 @@ export type OutlinerTxApi = {
 };
 
 const selectedPaths = (at: Path | NodeSelection): readonly Path[] =>
-  SelectionApi.isNode(at) ? at.paths : [at];
+  (SelectionApi.isNode(at) ? at.paths : [at]).filter(
+    (path, index, paths) =>
+      !paths.slice(0, index).some((parent) => PathApi.isAncestor(parent, path))
+  );
+
+const selectedTarget = (at: Path | NodeSelection): NodeSelection =>
+  SelectionApi.nodes(selectedPaths(at) as [Path, ...Path[]]);
+
+const rootPoint = (
+  tx: EditorUpdateTransaction,
+  root: NamedRootKey,
+  edge: 'end' | 'start'
+): Point | undefined => {
+  const content = tx.value().roots?.[root];
+  const node = edge === 'start' ? content?.[0] : content?.at(-1);
+  return node ? tx.points[edge](tx.key(node)) : undefined;
+};
 
 const assertMovable = (paths: readonly Path[], target: Path) => {
   for (const path of paths) {
@@ -119,7 +138,7 @@ const createOutlinerUpdate = (tx: EditorUpdateTransaction): OutlinerTxApi => ({
     const target = tx.value().roots?.[targetRoot]?.[0];
     if (!source || !target || !NodeApi.isElement(source)) return false;
 
-    const targetPoint = tx.points.end({ path: [0, 0, 0], offset: 0, root: targetRoot });
+    const targetPoint = rootPoint(tx, targetRoot, 'end');
     if (!targetPoint) return false;
     const caret = tx.anchor(targetPoint, {
       association: 'backward',
@@ -134,11 +153,16 @@ const createOutlinerUpdate = (tx: EditorUpdateTransaction): OutlinerTxApi => ({
       while (true) {
         const index = tx.nodes
           .children(at)
-          .findIndex((node) => NodeApi.isElement(node) && node.type === childType);
-        if (index < 0) break;
+          .findIndex(
+            (node) => NodeApi.isElement(node) && node.type === childType
+          );
+        if (index === -1) break;
         tx.nodes.move({
           at: [...at, index],
-          to: [...PathApi.previous(at), tx.nodes.children(PathApi.previous(at)).length],
+          to: [
+            ...PathApi.previous(at),
+            tx.nodes.children(PathApi.previous(at)).length,
+          ],
         });
       }
     }
@@ -150,17 +174,24 @@ const createOutlinerUpdate = (tx: EditorUpdateTransaction): OutlinerTxApi => ({
   move({ at, intent, target }) {
     const paths = selectedPaths(at);
     assertMovable(paths, target);
-    const destination = adjustDestinationAfterRemoval(
-      insertionPath(tx, intent, target),
-      paths
-    );
-    const selection = SelectionApi.isNode(at) ? at : SelectionApi.nodes([at]);
+    const insertion = insertionPath(tx, intent, target);
+    // Plite rebases a NodeSelection destination while moving each member.
+    const destination =
+      paths.length === 1
+        ? adjustDestinationAfterRemoval(insertion, paths)
+        : insertion;
+    const selection = selectedTarget(at);
     tx.nodes.move({ at: selection, to: destination });
   },
   nest({ at }) {
-    if (!PathApi.hasPrevious(at)) return;
-    const parent = PathApi.previous(at);
-    tx.nodes.move({ at, to: [...parent, tx.nodes.children(parent).length] });
+    const paths = selectedPaths(at);
+    const first = paths[0];
+    if (!first || !PathApi.hasPrevious(first)) return;
+    const parent = PathApi.previous(first);
+    tx.nodes.move({
+      at: selectedTarget(at),
+      to: [...parent, tx.nodes.children(parent).length],
+    });
   },
   splitAtSelection({
     at,
@@ -182,13 +213,19 @@ const createOutlinerUpdate = (tx: EditorUpdateTransaction): OutlinerTxApi => ({
       { ...trailing, ...targetProperties } as Element,
     ]);
     tx.blocks.insertAfter(block, { at });
-    const point = tx.points.start({ path: [0, 0, 0], offset: 0, root: targetRoot });
+    const point = rootPoint(tx, targetRoot, 'start');
     if (point) tx.selection.set(point);
     return true;
   },
   unnest({ at }) {
-    if (at.length < 2) return;
-    tx.nodes.move({ at, to: PathApi.next(PathApi.parent(at)) });
+    const paths = selectedPaths(at);
+    const first = paths[0];
+    if (!first || first.length < 2) return;
+    const parent = PathApi.parent(first);
+    if (paths.some((path) => !PathApi.equals(PathApi.parent(path), parent))) {
+      throw new Error('Cannot unnest outline blocks with different parents.');
+    }
+    tx.nodes.move({ at: selectedTarget(at), to: PathApi.next(parent) });
   },
 });
 

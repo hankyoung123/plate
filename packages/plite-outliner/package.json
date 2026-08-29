@@ -1,6 +1,7 @@
 {
   "name": "@platejs/plite-outliner",
   "version": "54.0.0-beta.0",
+  "private": true,
   "description": "Generic tree-outliner transactions for Plite.",
   "keywords": [
     "editor",
@@ -9,7 +10,6 @@
     "plite",
     "tree"
   ],
-  "private": true,
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -37,6 +37,9 @@
     "lint:fix": "plate-pkg p:lint:fix",
     "test": "bun test --preload ../../config/plite-source-test-setup.ts",
     "typecheck": "plate-pkg p:typecheck"
+  },
+  "dependencies": {
+    "@platejs/dnd": "workspace:^"
   },
   "devDependencies": {
     "@plate/scripts": "workspace:*",

@@ -1,17 +1,25 @@
-import type { Editor, NodeSelection, Path } from '@platejs/plite';
-import { SelectionApi } from '@platejs/plite';
+import {
+  DndRuntimeProvider,
+  type DndPointerGeometry,
+  useDndItem,
+} from '@platejs/dnd';
+import {
+  type EditorSelection,
+  type NodeSelection,
+  type Path,
+  PathApi,
+  SelectionApi,
+} from '@platejs/plite';
 import React, {
   createContext,
-  type PointerEvent,
   type ReactNode,
   useCallback,
   useContext,
-  useEffect,
-  useRef,
-  useState,
+  useMemo,
 } from 'react';
 
 import type { OutlinerDropIntent } from './outliner-extension';
+import { restrictOutlineSelection } from './selection';
 
 export type OutlinerDrop = Readonly<{
   intent: OutlinerDropIntent;
@@ -19,100 +27,97 @@ export type OutlinerDrop = Readonly<{
   target: Path;
 }>;
 
-type OutlinerDragContextValue = Readonly<{
-  bind: (path: Path) => Readonly<{
-    'aria-grabbed': boolean;
-    onPointerDown: (event: PointerEvent<HTMLElement>) => void;
+type OutlinerDragItem = Readonly<{ source: NodeSelection }>;
+type OutlinerDragEditor = Readonly<{
+  read: Readonly<{
+    runtime: Readonly<{
+      snapshot: () => Readonly<{ selection: EditorSelection | null }>;
+    }>;
   }>;
-  drop: OutlinerDrop | null;
+}>;
+type OutlinerDragContextValue = Readonly<{
+  editor: OutlinerDragEditor;
+  onDrop: (drop: OutlinerDrop) => void;
+  visiblePaths: readonly Path[];
 }>;
 
-const OutlinerDragContext = createContext<OutlinerDragContextValue | null>(null);
+const OutlinerDragContext = createContext<OutlinerDragContextValue | null>(
+  null
+);
+const DRAG_TYPE = 'plite-outline-block';
+
+const includesPath = (selection: NodeSelection, target: Path) =>
+  selection.paths.some((path) => PathApi.equals(path, target));
+
+const resolveIntent = ({ client, rect }: DndPointerGeometry) => {
+  const vertical = (client.y - rect.top) / Math.max(rect.height, 1);
+  if (vertical < 0.25) return 'before' as const;
+  if (vertical > 0.75) return 'after' as const;
+  const horizontal = (client.x - rect.left) / Math.max(rect.width, 1);
+  return horizontal > 0.25 ? ('child' as const) : ('after' as const);
+};
 
 export const OutlinerDragProvider = ({
   children,
   editor,
   onDrop,
-  resolvePath,
+  scrollContainerRef,
+  visiblePaths,
 }: {
   children: ReactNode;
-  editor: Editor;
+  editor: OutlinerDragEditor;
   onDrop: (drop: OutlinerDrop) => void;
-  resolvePath: (placementId: string) => Path | undefined;
+  scrollContainerRef?: React.RefObject<HTMLElement | null>;
+  visiblePaths: readonly Path[];
 }) => {
-  const [active, setActive] = useState(false);
-  const [drop, setDrop] = useState<OutlinerDrop | null>(null);
-  const source = useRef<{ selection: NodeSelection; x: number; y: number } | null>(null);
-
-  const onPointerMove = useCallback((event: globalThis.PointerEvent) => {
-    const active = source.current;
-    if (!active) return;
-    const distance = Math.hypot(event.clientX - active.x, event.clientY - active.y);
-    if (distance < 4) return;
-    const targetElement = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-placement-id]');
-    const placementId = targetElement?.dataset.placementId;
-    const target = placementId ? resolvePath(placementId) : undefined;
-    if (!targetElement || !target || active.selection.paths.some((path) => path.join('.') === target.join('.'))) {
-      setDrop(null);
-      return;
-    }
-    const rect = targetElement.getBoundingClientRect();
-    const intent: OutlinerDropIntent = event.clientX - rect.left > 48
-      ? 'child'
-      : event.clientY - rect.top < rect.height / 2
-        ? 'before'
-        : 'after';
-    setDrop({ intent, source: active.selection, target });
-    const scrollParent = targetElement.closest<HTMLElement>('.workspace-canvas');
-    if (scrollParent) {
-      const edge = 56;
-      if (event.clientY < edge) scrollParent.scrollBy({ top: -12 });
-      else if (event.clientY > window.innerHeight - edge) scrollParent.scrollBy({ top: 12 });
-    }
-  }, [resolvePath]);
-
-  const finish = useCallback(() => {
-    const current = drop;
-    source.current = null;
-    setActive(false);
-    setDrop(null);
-    if (current) onDrop(current);
-  }, [drop, onDrop]);
-
-  useEffect(() => {
-    if (!active) return;
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', finish, { once: true });
-    window.addEventListener('pointercancel', finish, { once: true });
-    return () => {
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', finish);
-      window.removeEventListener('pointercancel', finish);
-    };
-  }, [active, finish, onPointerMove]);
-
-  const bind = useCallback((path: Path) => ({
-    'aria-grabbed': Boolean(drop?.source.paths.some((candidate) => candidate.join('.') === path.join('.'))),
-    onPointerDown: (event: PointerEvent<HTMLElement>) => {
-      if (event.button !== 0) return;
-      const selection = editor.read.runtime.snapshot().selection;
-      source.current = {
-        selection: SelectionApi.isNode(selection) && selection.paths.some((candidate) => candidate.join('.') === path.join('.'))
-          ? selection
-          : SelectionApi.nodes([path]),
-        x: event.clientX,
-        y: event.clientY,
-      };
-      setActive(true);
-      event.currentTarget.setPointerCapture?.(event.pointerId);
-    },
-  }), [drop, editor]);
-
-  return <OutlinerDragContext.Provider value={{ bind, drop }}>{children}</OutlinerDragContext.Provider>;
+  const value = useMemo(
+    () => ({ editor, onDrop, visiblePaths }),
+    [editor, onDrop, visiblePaths]
+  );
+  return (
+    <DndRuntimeProvider scrollContainerRef={scrollContainerRef}>
+      <OutlinerDragContext.Provider value={value}>
+        {children}
+      </OutlinerDragContext.Provider>
+    </DndRuntimeProvider>
+  );
 };
 
+/** Bind one projected outline row to the shared DnD runtime. */
 export const useOutlinerDrag = (path: Path) => {
-  const value = useContext(OutlinerDragContext);
-  if (!value) throw new Error('useOutlinerDrag must be used inside OutlinerDragProvider.');
-  return { ...value.bind(path), drop: value.drop };
+  const context = useContext(OutlinerDragContext);
+  if (!context) {
+    throw new Error(
+      'useOutlinerDrag must be used inside OutlinerDragProvider.'
+    );
+  }
+  const { editor, onDrop, visiblePaths } = context;
+  const getItem = useCallback((): OutlinerDragItem => {
+    const current = editor.read.runtime.snapshot().selection;
+    const restricted = SelectionApi.isNode(current)
+      ? restrictOutlineSelection(visiblePaths, current)
+      : null;
+    return {
+      source:
+        restricted && includesPath(restricted, path)
+          ? restricted
+          : SelectionApi.nodes([path]),
+    };
+  }, [editor, path, visiblePaths]);
+  return useDndItem<OutlinerDragItem, OutlinerDrop>({
+    canDrop: ({ source }) =>
+      !source.paths.some(
+        (sourcePath) =>
+          PathApi.equals(sourcePath, path) ||
+          PathApi.isAncestor(sourcePath, path)
+      ),
+    getItem,
+    onDrop,
+    resolveDrop: ({ source }, geometry) => ({
+      intent: resolveIntent(geometry),
+      source,
+      target: path,
+    }),
+    type: DRAG_TYPE,
+  });
 };

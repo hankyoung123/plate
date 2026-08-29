@@ -163,7 +163,7 @@ describe('selection protocol', () => {
       initialValue,
     });
 
-    assert.deepEqual(selection.paths, [[0], [1]]);
+    assert.deepEqual(selection.paths, [[0], [0, 0], [1]]);
     assert.deepEqual(selection.anchorPath, [1]);
     assert.deepEqual(selection.focusPath, [0]);
     assert.equal('path' in selection, false);

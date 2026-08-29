@@ -1,27 +1,21 @@
 import {
   PliteCombobox,
-  usePliteCombobox,
   type PliteComboboxItem,
   type PliteComboboxState,
+  usePliteCombobox,
 } from '@platejs/combobox';
+import { createEditorView, PathApi, SelectionApi } from '@platejs/plite';
 import {
-  createEditorView,
-  PathApi,
-  SelectionApi,
-  type Editor,
-} from '@platejs/plite';
-import {
+  resolveOutlinerInteraction,
   selectOutlineRange,
   toggleOutlineSelection,
   useOutlinerDrag,
 } from '@platejs/plite-outliner';
-import {
-  type RenderElementProps,
-  useEditor,
-  useElementPath,
-} from '@platejs/plite-react';
+import type { RenderElementProps } from '@platejs/plite-react';
+import { useEditorComposing, useElementPath } from '@platejs/plite-react';
 import {
   filterComboboxItems,
+  nodeRoot,
   nodeText,
   type NodeId,
   type PlacementElement,
@@ -83,18 +77,36 @@ export const PlacementView = ({
   element,
   slots,
 }: RenderElementProps<PlacementElement>) => {
-  const editor = useEditor() as unknown as Editor;
   const path = useElementPath();
-  const { index, inspect, openNode, projection, setWorkspace, workspace } =
-    useWorkspace();
-  const drag = useOutlinerDrag(path ?? []);
+  const composing = useEditorComposing();
+  const {
+    editor,
+    index,
+    inspect,
+    openNode,
+    projection,
+    setWorkspace,
+    workspace,
+  } = useWorkspace();
+  const { drop, handleRef, isDragging, isOver, nodeRef, previewRef } =
+    useOutlinerDrag(path ?? []);
+  const collapsed = workspace.collapsedPlacementIds.includes(
+    element.placementId
+  );
+  const toggleCollapsed = () =>
+    setWorkspace((state) => ({
+      ...state,
+      collapsedPlacementIds: collapsed
+        ? state.collapsedPlacementIds.filter((id) => id !== element.placementId)
+        : [...state.collapsedPlacementIds, element.placementId],
+    }));
   const combo = usePliteCombobox({
     getItems: (trigger, query) => {
       const items =
         trigger === '@'
           ? [...index.nodes.values()].map((node) => ({
               id: node.nodeId,
-              label: nodeText(node) || 'Untitled',
+              label: nodeText(node, index.nodes) || 'Untitled',
             }))
           : trigger === '#'
             ? [...index.nodes.values()].flatMap((node) =>
@@ -127,94 +139,107 @@ export const PlacementView = ({
         const point = caret.resolve();
         if (!point) return;
         if (state.trigger === '@') {
-          (tx as any).tana.insertReference({
+          tx.tana.insertReference({
             at: point,
-            label: item.label,
             sourceNodeId: element.nodeId,
             targetNodeId: item.id as NodeId,
           });
         } else if (state.trigger === '#') {
-          (tx as any).tana.applySupertag({
-            definition: index.nodes.get(item.id as NodeId)?.metadata
-              .supertagDefinition,
+          const tagId = item.id as NodeId;
+          tx.tana.applySupertag({
+            definition: index.nodes.get(tagId)?.metadata.supertagDefinition,
             nodeId: element.nodeId,
-            tagId: item.id as NodeId,
+            tagId,
           });
         } else if (state.trigger === ':') {
           tx.text.insert(item.id, { at: point });
         } else if (item.id === 'new-child') {
-          (tx as any).tana.createNode({ parent: path });
+          tx.tana.createNode({ parent: path });
         } else {
-          (tx as any).tana.createPlacement({
-            at: [...path.slice(0, -1), (path.at(-1) ?? 0) + 1],
+          tx.tana.createPlacement({
+            at: PathApi.next(path),
             nodeId: element.nodeId,
           });
         }
       });
     },
   });
-  if (!path || !projection.isVisible(element.placementId)) return null;
-  const collapsed = workspace.collapsedPlacementIds.includes(
-    element.placementId
-  );
-  const node = index.nodes.get(element.nodeId);
-  const toggleCollapsed = () =>
-    setWorkspace((state) => ({
-      ...state,
-      collapsedPlacementIds: collapsed
-        ? state.collapsedPlacementIds.filter((id) => id !== element.placementId)
-        : [...state.collapsedPlacementIds, element.placementId],
-    }));
+
+  if (!path) return null;
+  if (projection.isAncestor(element.placementId)) {
+    return (
+      <div {...attributes} className="projection-ancestor">
+        {children}
+      </div>
+    );
+  }
+  if (!projection.isVisible(element.placementId)) return null;
+
   const select = (event: PointerEvent) => {
     event.preventDefault();
     const current = editor.read.runtime.snapshot().selection;
     const next =
       event.shiftKey && SelectionApi.isNode(current)
-        ? selectOutlineRange(projection.topLevelPaths, current, path)
-        : event.metaKey && SelectionApi.isNode(current)
-          ? toggleOutlineSelection(current, path)
+        ? selectOutlineRange(
+            projection.visiblePathsInOutlineOrder,
+            current,
+            path
+          )
+        : (event.metaKey || event.ctrlKey) && SelectionApi.isNode(current)
+          ? toggleOutlineSelection(
+              projection.visiblePathsInOutlineOrder,
+              current,
+              path
+            )
           : SelectionApi.nodes([path]);
     if (next) editor.update((tx) => tx.selection.set(next));
     inspect(element);
   };
   const keyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.nativeEvent.isComposing) return;
-    if (event.key === 'Enter' && !event.shiftKey) {
-      const view = createEditorView(editor, { root: `${element.nodeId}:root` });
-      const range = view.read.selection();
-      if (!range) return;
-      event.preventDefault();
-      editor.update((tx) =>
-        (tx as any).tana.splitNode({ at: path, nodeId: element.nodeId, range })
-      );
-    } else if (event.key === 'Tab') {
-      event.preventDefault();
-      editor.update((tx) =>
-        event.shiftKey
-          ? (tx as any).tana.outdentPlacement({ at: path })
-          : (tx as any).tana.indentPlacement({ at: path })
-      );
-    } else if (event.key === 'Backspace' && node && nodeText(node) === '') {
-      event.preventDefault();
-      editor.update((tx) => (tx as any).tana.deletePlacement({ at: path }));
-    } else if (event.key === 'Backspace') {
-      const view = createEditorView(editor, { root: `${element.nodeId}:root` });
-      if (view.read.selection()?.anchor.offset === 0) {
-        event.preventDefault();
-        editor.update((tx) =>
-          (tx as any).tana.mergeBackward({ at: path, nodeId: element.nodeId })
-        );
-      }
+    const view = createEditorView(editor, { root: nodeRoot(element.nodeId) });
+    const range = view.read.selection();
+    if (!range) return;
+    const action = resolveOutlinerInteraction({
+      comboboxOpen: combo.isOpen,
+      composing: composing || event.nativeEvent.isComposing,
+      defaultPrevented: event.defaultPrevented,
+      empty: view.read.text.string([]) === '',
+      key: event.key,
+      nodeCollapsed: collapsed,
+      selectionAtRootStart: view.read.points.isStart(range.anchor, []),
+      selectionCollapsed: view.read.selection.isCollapsed(),
+      shift: event.shiftKey,
+    });
+    if (action === 'pass') return;
+    event.preventDefault();
+    if (action === 'expand') {
+      toggleCollapsed();
+      return;
     }
+    editor.update((tx) => {
+      if (action === 'split') {
+        tx.tana.splitNode({ at: path, nodeId: element.nodeId, range });
+      } else if (action === 'nest') {
+        tx.tana.indentPlacement({ at: path });
+      } else if (action === 'unnest') {
+        tx.tana.outdentPlacement({ at: path });
+      } else if (action === 'delete-placement') {
+        tx.tana.deletePlacement({ at: path });
+      } else if (action === 'merge-backward') {
+        tx.tana.mergeBackward({ at: path, nodeId: element.nodeId });
+      }
+    });
   };
-  const isDropTarget = Boolean(
-    drag.drop && PathApi.equals(drag.drop.target, path)
-  );
+  const dropIntent = isOver ? drop?.intent : undefined;
+
   return (
     <div
       {...attributes}
-      className={`placement ${isDropTarget ? `drop-${drag.drop?.intent}` : ''} ${workspace.zoomedPlacementId === element.placementId ? 'zoom-target' : ''}`}
-      data-placement-id={element.placementId}
+      className={`placement ${dropIntent ? `drop-${dropIntent}` : ''} ${workspace.zoomedPlacementId === element.placementId ? 'zoom-target' : ''}`}
+      ref={(node) => {
+        nodeRef(node);
+        previewRef(node);
+      }}
     >
       <div className="placement-line">
         <button
@@ -233,11 +258,9 @@ export const PlacementView = ({
           type="button"
           className="bullet"
           contentEditable={false}
-          aria-grabbed={drag['aria-grabbed']}
-          onPointerDown={(event) => {
-            select(event);
-            drag.onPointerDown(event);
-          }}
+          aria-grabbed={isDragging}
+          ref={handleRef}
+          onPointerDown={select}
           onDoubleClick={() => openNode(element.nodeId)}
           aria-label="Select and drag node"
         >
@@ -245,9 +268,11 @@ export const PlacementView = ({
         </button>
         <div
           className="node-content"
-          onKeyDownCapture={(event) => {
+          role="treeitem"
+          tabIndex={-1}
+          onKeyDown={(event) => {
             combo.onKeyDown(event);
-            if (!event.defaultPrevented) keyDown(event);
+            keyDown(event);
           }}
         >
           {slots.contentRoot('body', {
@@ -279,7 +304,7 @@ export const PlacementView = ({
           contentEditable={false}
           onClick={() =>
             editor.update((tx) =>
-              (tx as any).tana.createNode({ at: PathApi.next(path) })
+              tx.tana.createNode({ at: PathApi.next(path) })
             )
           }
           aria-label="Add node after"
@@ -292,7 +317,7 @@ export const PlacementView = ({
         type="button"
         className="placement-remove"
         onClick={() =>
-          editor.update((tx) => (tx as any).tana.deletePlacement({ at: path }))
+          editor.update((tx) => tx.tana.deletePlacement({ at: path }))
         }
       >
         Remove
@@ -308,11 +333,14 @@ const Reference = ({
 }: RenderElementProps<ReferenceElement>) => {
   const { index, openNode } = useWorkspace();
   const target = index.nodes.get(element.targetNodeId);
+  const display =
+    element.alias ??
+    (target ? nodeText(target, index.nodes) || 'Untitled' : 'Missing node');
   return (
     <span
       {...attributes}
       className="reference-chip"
-      data-preview={target ? nodeText(target) : 'Missing node'}
+      data-preview={display}
       onClick={() => openNode(element.targetNodeId)}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
@@ -323,7 +351,7 @@ const Reference = ({
       role="button"
       tabIndex={0}
     >
-      @{element.label}
+      @{display}
       {children}
     </span>
   );

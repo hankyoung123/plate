@@ -3,6 +3,11 @@
 export * from './DndPlugin';
 export type { DndScrollerOptions } from './DndScroller';
 export {
+  DndRuntimeProvider,
+  useDndItem,
+  type DndPointerGeometry,
+} from './headless-dnd';
+export {
   DRAG_ITEM_BLOCK,
   getDropPath,
   getHoverDirection,
